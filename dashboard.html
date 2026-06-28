@@ -16,157 +16,170 @@
             padding: 6px 12px; background: #111128; border-bottom: 1px solid #1a1a3e;
         }
         header h1 { font-size: 1em; color: #e94560; }
-        #sym-input {
+        #sym {
             background: #1a1a3e; border: 1px solid #252550; color: #4ae68a;
             padding: 3px 8px; border-radius: 3px; font-size: 0.9em;
             font-family: monospace; width: 80px; text-transform: uppercase;
         }
-        #sym-input:focus { outline: none; border-color: #e94560; }
-        .intervals { display: flex; gap: 2px; }
-        .iv-btn {
-            background: #1a1a3e; color: #888; border: none; padding: 3px 8px;
-            border-radius: 3px; cursor: pointer; font-size: 0.75em;
-        }
-        .iv-btn:hover { background: #252550; color: #ccc; }
-        .iv-btn.on { background: #e94560; color: #fff; }
-        #fetch-btn {
+        #sym:focus { outline: none; border-color: #e94560; }
+        #go {
             background: #2ecc71; color: #000; border: none; padding: 3px 12px;
             border-radius: 3px; cursor: pointer; font-size: 0.8em; font-weight: bold;
         }
-        #fetch-btn:hover { background: #27ae60; }
-        #fetch-btn:disabled { background: #555; color: #999; cursor: default; }
+        #go:hover { background: #27ae60; }
         #status { font-size: 0.7em; padding: 2px 6px; border-radius: 3px; margin-left: auto; }
         #status.ok { background: #2ecc71; color: #000; }
         #status.err { background: #e74c3c; }
         #status.off { background: #f39c12; color: #000; }
-        .tabs { display: flex; gap: 2px; padding: 4px 12px; background: #0d0d20; }
-        .tab {
-            padding: 4px 10px; border-radius: 3px 3px 0 0; cursor: pointer;
-            background: #1a1a3e; color: #888; font-size: 0.75em; border: none;
+        .grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+            padding: 8px 12px; height: calc(100vh - 40px);
         }
-        .tab:hover { background: #252550; color: #ccc; }
-        .tab.active { background: #111128; color: #e94560; }
-        .panel { display: none; padding: 8px 12px; }
-        .panel.active { display: block; }
-        .panel-hdr { display: flex; justify-content: space-between; margin-bottom: 3px; }
-        .panel-hdr h2 { font-size: 0.85em; color: #aaa; }
-        .panel-hdr .info { font-size: 0.7em; color: #666; }
-        .chart { width: 100%; height: 300px; }
-        .segs { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 4px; }
-        .seg { padding: 1px 5px; border-radius: 2px; font-size: 0.6em; font-family: monospace; }
+        .col { display: flex; flex-direction: column; }
+        .col-hdr {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 3px;
+        }
+        .col-hdr h2 { font-size: 0.85em; color: #aaa; }
+        .col-hdr .info { font-size: 0.7em; color: #666; }
+        .chart { flex: 1; min-height: 0; }
+        .segs { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 3px; max-height: 60px; overflow-y: auto; }
+        .seg { padding: 1px 4px; border-radius: 2px; font-size: 0.6em; font-family: monospace; }
         .seg.y { background: #1a4a2a; color: #4ae68a; }
         .seg.n { background: #4a1a2a; color: #e64a6a; }
         #log {
             position: fixed; bottom: 0; left: 0; right: 0;
             font-size: 0.6em; color: #444; padding: 2px 12px;
             background: #0a0a1acc; font-family: monospace;
-            max-height: 50px; overflow-y: auto; border-top: 1px solid #1a1a3e;
+            max-height: 40px; overflow-y: auto; border-top: 1px solid #1a1a3e;
         }
     </style>
 </head>
 <body>
     <header>
         <h1>idib</h1>
-        <input id="sym-input" value="SPY" maxlength="6" spellcheck="false">
-        <div class="intervals" id="ivs"></div>
-        <button id="fetch-btn">Fetch</button>
+        <input id="sym" value="SPY" maxlength="6" spellcheck="false">
+        <button id="go">Fetch</button>
         <span id="status" class="off">...</span>
     </header>
-    <div class="tabs" id="tabs"></div>
-    <div id="panels"></div>
+    <div class="grid">
+        <div class="col">
+            <div class="col-hdr">
+                <h2 id="h-left">1M</h2>
+                <span class="info" id="i-left">—</span>
+            </div>
+            <div id="c-left" class="chart"></div>
+            <div class="segs" id="s-left"></div>
+        </div>
+        <div class="col">
+            <div class="col-hdr">
+                <h2 id="h-right">1D</h2>
+                <span class="info" id="i-right">—</span>
+            </div>
+            <div id="c-right" class="chart"></div>
+            <div class="segs" id="s-right"></div>
+        </div>
+    </div>
     <div id="log"></div>
 
     <script>
-    const ALL_IVS = ['1m','5m','15m','30m','1h','4h','1d','1w']
-    const sel = new Set(['1h','1d'])
-
-    // Build interval buttons
-    const ivsEl = document.getElementById('ivs')
-    ALL_IVS.forEach(iv => {
-        const b = document.createElement('button')
-        b.className = 'iv-btn' + (sel.has(iv) ? ' on' : '')
-        b.textContent = iv
-        b.onclick = () => { sel.has(iv) ? sel.delete(iv) : sel.add(iv); b.classList.toggle('on') }
-        ivsEl.appendChild(b)
-    })
-
-    // Fetch button
-    const fetchBtn = document.getElementById('fetch-btn')
-    fetchBtn.onclick = () => {
-        const symbol = document.getElementById('sym-input').value.toUpperCase().trim()
-        if (!symbol || sel.size === 0) return
-        fetchBtn.disabled = true
-        fetch('/request', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol, intervals: [...sel] }),
-        }).then(r => r.json()).then(d => {
-            fetchBtn.disabled = false
-            log('requested ' + symbol + ' [' + [...sel].join(',') + ']')
-        }).catch(e => { fetchBtn.disabled = false; log('error: ' + e) })
+    const log = (m) => {
+        const el = document.getElementById('log')
+        el.textContent = new Date().toLocaleTimeString() + ' ' + m + '\n' + el.textContent
     }
-    document.getElementById('sym-input').onkeydown = (e) => { if (e.key === 'Enter') fetchBtn.click() }
 
-    // Charts
-    const inst = {}
-    function ensure(iv) {
-        if (inst[iv]) return inst[iv]
-        const tab = document.createElement('button')
-        tab.className = 'tab'; tab.textContent = iv
-        tab.onclick = () => show(iv)
-        document.getElementById('tabs').appendChild(tab)
-
-        const p = document.createElement('div')
-        p.className = 'panel'; p.id = 'p-' + iv
-        p.innerHTML = `<div class="panel-hdr"><h2 id="hdr-${iv}">${iv}</h2><span class="info" id="info-${iv}"></span></div>
-            <div id="ch-${iv}" class="chart"></div><div class="segs" id="sg-${iv}"></div>`
-        document.getElementById('panels').appendChild(p)
-
-        const ch = LightweightCharts.createChart(document.getElementById('ch-' + iv), {
+    function makeChart(elId) {
+        const el = document.getElementById(elId)
+        const ch = LightweightCharts.createChart(el, {
             layout: { background: { color: '#111128' }, textColor: '#aaa' },
             grid: { vertLines: { color: '#1a1a3e' }, horzLines: { color: '#1a1a3e' } },
-            crosshair: { mode: 0 }, timeScale: { timeVisible: true },
+            crosshair: { mode: 0 },
+            timeScale: { timeVisible: true },
         })
-        const cs = ch.addCandlestickSeries({ upColor:'#4ae68a',downColor:'#e64a6a',borderUpColor:'#4ae68a',borderDownColor:'#e64a6a',wickUpColor:'#4ae68a',wickDownColor:'#e64a6a' })
-        const vs = ch.addHistogramSeries({ priceFormat:{type:'volume'},priceScaleId:'v' })
-        ch.priceScale('v').applyOptions({ scaleMargins:{top:0.88,bottom:0} })
-        inst[iv] = { ch, cs, vs, tab }
-        show(iv)
-        return inst[iv]
+        const cs = ch.addCandlestickSeries({
+            upColor: '#4ae68a', downColor: '#e64a6a',
+            borderUpColor: '#4ae68a', borderDownColor: '#e64a6a',
+            wickUpColor: '#4ae68a', wickDownColor: '#e64a6a',
+        })
+        const vs = ch.addHistogramSeries({
+            priceFormat: { type: 'volume' }, priceScaleId: 'v',
+        })
+        ch.priceScale('v').applyOptions({ scaleMargins: { top: 0.88, bottom: 0 } })
+        return { ch, cs, vs }
     }
-    function show(iv) {
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'))
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
-        const p = document.getElementById('p-' + iv); if (p) p.classList.add('active')
-        if (inst[iv]) inst[iv].tab.classList.add('active')
-    }
-    function pt(s) { const m=s.match(/(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/); if(!m)return 0; return Math.floor(new Date(m[1],m[2]-1,m[3],m[4],m[5],m[6]).getTime()/1000) }
 
-    function onMsg(data) {
-        const iv = data.interval; if (!iv) return
-        const i = ensure(iv)
-        const bars = data.chartBars || []
-        if (bars.length) {
-            document.getElementById('info-'+iv).textContent = bars.length + ' bars'
-            i.cs.setData(bars.map(b=>({time:pt(b.date),open:b.open,high:b.high,low:b.low,close:b.close})).filter(c=>c.time>0).sort((a,b)=>a.time-b.time))
-            i.vs.setData(bars.map(b=>({time:pt(b.date),value:b.volume||0,color:b.close>=b.open?'#4ae68a44':'#e64a6a44'})).filter(c=>c.time>0))
+    function pt(s) {
+        const m = s.match(/(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/)
+        if (!m) return 0
+        return Math.floor(new Date(m[1], m[2]-1, m[3], m[4], m[5], m[6]).getTime() / 1000)
+    }
+
+    const left = makeChart('c-left')
+    const right = makeChart('c-right')
+
+    const panelMap = {}  // interval → 'left' | 'right'
+
+    function update(data) {
+        const iv = data.interval
+        if (!iv) return
+
+        // Map interval to panel: first interval → left, second → right
+        if (!panelMap[iv]) {
+            const used = new Set(Object.values(panelMap))
+            panelMap[iv] = used.has('left') ? 'right' : 'left'
         }
-        const all = [...(data.leaves||[]),...(data.branches||[])]
-        document.getElementById('sg-'+iv).innerHTML = all.map(s=>{
-            const c=s.kind.startsWith('Yang')?'y':'n'; const l=s.kind.replace('Leaf','L').replace('Branch','B')
+        const side = panelMap[iv]
+        const ch = side === 'left' ? left : right
+
+        document.getElementById('h-' + side).textContent = iv
+        const bars = data.chartBars || []
+        document.getElementById('i-' + side).textContent = bars.length ? bars.length + ' bars' : '—'
+
+        if (bars.length) {
+            const candles = bars.map(b => ({
+                time: pt(b.date), open: b.open, high: b.high, low: b.low, close: b.close,
+            })).filter(c => c.time > 0).sort((a, b) => a.time - b.time)
+
+            ch.cs.setData(candles)
+            ch.vs.setData(bars.map(b => ({
+                time: pt(b.date), value: b.volume || 0,
+                color: b.close >= b.open ? '#4ae68a44' : '#e64a6a44',
+            })).filter(c => c.time > 0))
+
+            ch.ch.timeScale().fitContent()
+        }
+
+        const all = [...(data.leaves || []), ...(data.branches || [])]
+        document.getElementById('s-' + side).innerHTML = all.map(s => {
+            const c = s.kind.startsWith('Yang') ? 'y' : 'n'
+            const l = s.kind.replace('Leaf', 'L').replace('Branch', 'B')
             return `<span class="seg ${c}">${l}[${s.startIdx}..${s.endIdx}]</span>`
         }).join('')
     }
 
+    // Fetch
+    const goBtn = document.getElementById('go')
+    goBtn.onclick = () => {
+        const symbol = document.getElementById('sym').value.toUpperCase().trim()
+        if (!symbol) return
+        goBtn.disabled = true
+        fetch('/request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, intervals: ['1 month', '1 day'] }),
+        }).then(r => r.json()).then(() => {
+            goBtn.disabled = false
+            log('fetching ' + symbol)
+        }).catch(e => { goBtn.disabled = false; log('error: ' + e) })
+    }
+    document.getElementById('sym').onkeydown = (e) => { if (e.key === 'Enter') goBtn.click() }
+
     // SSE
     const st = document.getElementById('status')
     const es = new EventSource('/stream')
-    es.onopen = () => { st.textContent='connected'; st.className='ok' }
-    es.onerror = () => { st.textContent='reconnecting...'; st.className='err' }
-    es.onmessage = (e) => { try{onMsg(JSON.parse(e.data))}catch(er){log(er.message)} }
-
-    const logEl = document.getElementById('log')
-    function log(m) { logEl.textContent = new Date().toLocaleTimeString()+' '+m+'\n'+logEl.textContent }
+    es.onopen = () => { st.textContent = 'connected'; st.className = 'ok' }
+    es.onerror = () => { st.textContent = 'reconnecting...'; st.className = 'err' }
+    es.onmessage = (e) => { try { update(JSON.parse(e.data)) } catch (er) { log(er.message) } }
     </script>
 </body>
 </html>
