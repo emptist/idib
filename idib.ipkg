@@ -20,4 +20,9 @@ package idib
     Idib.Strategy.SignalSeries,
     Idib.MultiTF,
     Idib.Strategy.MultiTF,
-    Idib.Server.MultiChart
+    Idib.Server.MultiChart,
+    Idib.Fractal.Leaf,
+    Idib.Fractal.Types,
+    Idib.Fractal.LeafDetect,
+    Idib.Fractal.Branch,
+    Idib.Fractal.Analytics
