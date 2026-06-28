@@ -5,7 +5,7 @@ not a general language tour — it focuses on the features we use to replace
 `glib`'s Gleam code: **dependent types**, **totality**, **proof-carrying
 data**, and **Node.js FFI**.
 
-Examples are drawn from trading-engine domain (bars, indicators, fish
+Examples are drawn from trading-engine domain (bars, indicators, leaf/branch
 sequences, risk checks) so the mapping to `../glib/src/glib/**.gleam` is
 direct.
 
