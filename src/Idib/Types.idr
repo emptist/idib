@@ -114,7 +114,7 @@ bbMAWindow Min5   = 26880
 bbMAWindow Min1   = 134400
 
 -- =========================================================================
--- BarsPerMonth for Fish detection (interval-derived N)
+-- BarsPerMonth for Leaf/Branch detection (interval-derived N)
 -- =========================================================================
 
 public export
