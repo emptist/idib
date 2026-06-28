@@ -1,0 +1,7 @@
+build/
+*.ttc
+*.ttm
+*.mjs
+*.olean
+node_modules/
+idib.mjs
