@@ -1,5 +1,14 @@
 {
   "name": "idib",
   "type": "module",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "description": "Trading engine: Idris 2 core with Node.js gateway",
+  "scripts": {
+    "build": "./build.sh",
+    "gateway": "node gateway/index.mjs",
+    "test": "node ffi/test.mjs"
+  },
+  "dependencies": {
+    "@stoqey/ib": "^1.0.0"
+  }
 }
