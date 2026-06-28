@@ -1,149 +1,93 @@
 module Idib.Fractal.Branch
 
 import Data.List
-import Data.So
-import Idib.Fractal.Types
 import Idib.Fractal.Leaf
+import Idib.Fractal.Types
 
 %default total
 
 -- =========================================================================
--- BranchResult: a completed branch with inner leaf structure
--- =========================================================================
-
-public export
-record BranchResult where
-  constructor MkBranchResult
-  brKind       : BranchKind
-  brStartBar   : LeafBar
-  brEndBar     : LeafBar
-  brInnerLeaves : List Leaf
-  brConfirmed  : Bool
-  brStartIdx   : Nat
-  brEndIdx     : Nat
-
--- =========================================================================
--- Helper: convert LeafKind to BranchKind
--- =========================================================================
-
-leafKindToBranchKind : LeafKind -> BranchKind
-leafKindToBranchKind YangLeaf = Yang
-leafKindToBranchKind YinLeaf  = Yin
-
--- =========================================================================
--- Accessors
--- =========================================================================
-
-public export
-branchStartIndex : BranchResult -> Nat
-branchStartIndex b = b.brStartIdx
-
-public export
-branchEndIndex : BranchResult -> Nat
-branchEndIndex b = b.brEndIdx
-
-public export
-branchBarsCount : BranchResult -> Nat
-branchBarsCount b = minus b.brEndIdx b.brStartIdx
-
-public export
-branchConfirmed : BranchResult -> Bool
-branchConfirmed b = b.brConfirmed
-
-public export
-branchStartValue : BranchResult -> Double
-branchStartValue b = value b.brStartBar
-
-public export
-branchEndValue : BranchResult -> Double
-branchEndValue b = value b.brEndBar
-
--- =========================================================================
--- finalizeBranch: create BranchResult from accumulated leaves
+-- finalizeBranch: create a BranchSeg from accumulated leaf segments
 -- =========================================================================
 
 covering
-finalizeBranch : BranchKind -> LeafBar -> LeafBar -> List Leaf -> BranchResult
-finalizeBranch bk start end acc =
-  MkBranchResult
-    bk
-    start
-    end
-    acc
-    True
-    (index start)
-    (index end)
+finalizeBranch : SegmentKind -> LeafBar -> LeafBar -> List Segment -> Segment
+finalizeBranch sk start end acc =
+  BranchSeg (MkFractal sk start end []) acc True
 
 -- =========================================================================
--- extendBranchAcc: extend branch while same direction, accumulate leaves
--- Terminating: each step drops one element from the tail list
+-- extendBranchAcc: accumulate consecutive same-kind leaf segments
+-- into one BranchSeg. When a leaf of opposite kind appears, stop.
+-- Terminating: each step consumes one element from the tail.
 -- =========================================================================
 
 covering
-extendBranchAcc : BranchKind -> LeafBar -> List Leaf -> List Leaf
-                -> (BranchResult, List Leaf)
-extendBranchAcc bk start acc [] = (finalizeBranch bk start (lastLeaf acc) acc, [])
+extendBranchAcc : SegmentKind -> LeafBar -> List Segment -> List Segment
+               -> (Segment, List Segment)
+extendBranchAcc sk start acc [] =
+  (finalizeBranch sk start (segEnd (lastSeg acc)) acc, [])
   where
-    lastLeaf : List Leaf -> LeafBar
-    lastLeaf [] = start
-    lastLeaf (l :: ls) = lastLeaf' l ls
+    lastSeg : List Segment -> Segment
+    lastSeg [] = LeafSeg (MkFractal sk start start [])
+    lastSeg (s :: ss) = lastSeg' s ss
       where
-        lastLeaf' : Leaf -> List Leaf -> LeafBar
-        lastLeaf' x [] = endBar x
-        lastLeaf' _ (x' :: xs) = lastLeaf' x' xs
-extendBranchAcc bk start acc (f :: fs) =
-  let fbk = leafKindToBranchKind (kind f)
-  in if fbk == bk then
-    extendBranchAcc bk start (acc ++ [f]) fs
+        lastSeg' : Segment -> List Segment -> Segment
+        lastSeg' x [] = x
+        lastSeg' _ (x' :: xs) = lastSeg' x' xs
+extendBranchAcc sk start acc (s :: ss) =
+  if segKind s == sk then
+    extendBranchAcc sk start (acc ++ [s]) ss
   else
-    (finalizeBranch bk start (lastLeaf acc) acc, f :: fs)
+    (finalizeBranch sk start (segEnd (lastSeg acc)) acc, s :: ss)
   where
-    lastLeaf : List Leaf -> LeafBar
-    lastLeaf [] = start
-    lastLeaf (l :: ls) = lastLeaf' l ls
+    lastSeg : List Segment -> Segment
+    lastSeg [] = LeafSeg (MkFractal sk start start [])
+    lastSeg (x :: xs) = lastSeg' x xs
       where
-        lastLeaf' : Leaf -> List Leaf -> LeafBar
-        lastLeaf' x [] = endBar x
-        lastLeaf' _ (x' :: xs) = lastLeaf' x' xs
+        lastSeg' : Segment -> List Segment -> Segment
+        lastSeg' x [] = x
+        lastSeg' _ (x' :: xs) = lastSeg' x' xs
 
 -- =========================================================================
--- detectBranch: detect branches from a list of leaves
--- Terminating: each step drops at least one element from the list
+-- detectBranch: group leaf segments into branch-level segments
+--
+-- Input:  List Segment (from detectLeaf — all LeafSeg)
+-- Output: List Segment (BranchSeg wrapping groups of same-kind leaves)
+--
+-- Each BranchSeg contains its inner LeafSegs as children.
+-- The recursive Segment type means branches can nest.
 -- =========================================================================
 
 covering
 public export
-detectBranch : BranchConfig -> List Leaf -> List BranchResult
+detectBranch : BranchConfig -> List Segment -> List Segment
 detectBranch config [] = []
-detectBranch config leaves =
+detectBranch config segs =
   let n = config.confirmationBars
-  in if n == 0 then [] else go leaves
+  in if n == 0 then [] else go segs
 
   where
-    go : List Leaf -> List BranchResult
+    go : List Segment -> List Segment
     go [] = []
-    go (f :: fs) =
-      let initKind = leafKindToBranchKind (kind f)
-          initStart = startBar f
-          initEnd = endBar f
-          (finalBranch, remaining) = extendBranchAcc initKind initStart [f] fs
-      in finalBranch :: go remaining
+    go (s :: ss) =
+      let sk = segKind s
+          startB = segStart s
+          (branch, remaining) = extendBranchAcc sk startB [s] ss
+      in branch :: go remaining
 
 -- =========================================================================
--- backCountLeaf: count bars within a leaf
--- =========================================================================
-
-public export
-backCountLeaf : Leaf -> Nat
-backCountLeaf f = minus (index (endBar f)) (index (startBar f))
-
--- =========================================================================
--- isBranchConfirmed: check if branch meets confirmation criteria
+-- backCountSegment: count bars from segment start to end
 -- =========================================================================
 
 public export
-isBranchConfirmed : BranchConfig -> BranchResult -> Bool
-isBranchConfirmed config branch =
-  let required = config.confirmationBars
-      count = branchBarsCount branch
-  in count >= required
+backCountSegment : Segment -> Nat
+backCountSegment s = segBarsCount s
+
+-- =========================================================================
+-- isSegmentConfirmed: check if branch meets confirmation criteria
+-- =========================================================================
+
+public export
+isSegmentConfirmed : BranchConfig -> Segment -> Bool
+isSegmentConfirmed config branch =
+  config.confirmationBars <= segBarsCount branch

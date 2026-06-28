@@ -1,26 +1,25 @@
 module Idib.Fractal.Analytics
 
 import Data.List
-import Idib.Fractal.Types
 import Idib.Fractal.Leaf
 import Idib.Fractal.Branch
 
 %default total
 
 -- =========================================================================
--- BranchMetrics: statistics of a branch for AI pattern discovery
+-- SegmentMetrics: statistics of segments for AI pattern discovery
 -- =========================================================================
 
 public export
-record BranchMetrics where
-  constructor MkBranchMetrics
-  totalBranches   : Nat
-  yangBranches    : Nat
-  yinBranches     : Nat
-  avgBranchLength : Double
-  avgBranchReturn : Double
-  maxBranchLength : Nat
-  minBranchLength : Nat
+record SegmentMetrics where
+  constructor MkSegmentMetrics
+  totalSegments   : Nat
+  risingSegments  : Nat
+  fallingSegments : Nat
+  avgSegLength    : Double
+  avgSegReturn    : Double
+  maxSegLength    : Nat
+  minSegLength    : Nat
 
 -- =========================================================================
 -- helper: cast Nat to Double
@@ -30,75 +29,72 @@ natToDouble : Nat -> Double
 natToDouble n = cast n
 
 -- =========================================================================
--- computeBranchMetrics: compute metrics from a list of branches
+-- computeSegmentMetrics: compute metrics from a list of segments
 -- =========================================================================
 
 public export
-computeBranchMetrics : List BranchResult -> BranchMetrics
-computeBranchMetrics [] = MkBranchMetrics 0 0 0 0.0 0.0 0 0
-computeBranchMetrics branches =
-  let totalB : Nat
-      totalB = length branches
-      yangCount : Nat
-      yangCount = count (\b => brKind b == Yang) branches
-      yinCount : Nat
-      yinCount = count (\b => brKind b == Yin) branches
+computeSegmentMetrics : List Segment -> SegmentMetrics
+computeSegmentMetrics [] = MkSegmentMetrics 0 0 0 0.0 0.0 0 0
+computeSegmentMetrics segs =
+  let totalN : Nat
+      totalN = length segs
+      rising : Nat
+      rising = count (\s => segKind s == Rising) segs
+      falling : Nat
+      falling = count (\s => segKind s == Falling) segs
       lengths : List Nat
-      lengths = map branchBarsCount branches
+      lengths = map segBarsCount segs
       returns : List Double
-      returns = map (\b => branchEndValue b - branchStartValue b) branches
+      returns = map (\s => segEndValue s - segStartValue s) segs
       totalLen : Nat
       totalLen = foldr (+) 0 lengths
       totalRet : Double
       totalRet = foldr (+) 0.0 returns
       avgLen : Double
-      avgLen = if totalB > 0
-               then natToDouble totalLen / natToDouble totalB
-               else 0.0
+      avgLen = if totalN > 0 then natToDouble totalLen / natToDouble totalN else 0.0
       avgRet : Double
-      avgRet = if totalB > 0
-               then totalRet / natToDouble totalB
-               else 0.0
+      avgRet = if totalN > 0 then totalRet / natToDouble totalN else 0.0
       maxLen : Nat
       maxLen = foldr max 0 lengths
       minLen : Nat
       minLen = foldr min 0 lengths
-  in MkBranchMetrics totalB yangCount yinCount avgLen avgRet maxLen minLen
+  in MkSegmentMetrics totalN rising falling avgLen avgRet maxLen minLen
 
 -- =========================================================================
--- leafCount: count leaves within a branch
+-- segmentCount: count all segments (recursive into branches)
+-- =========================================================================
+
+covering
+public export
+segmentCount : List Segment -> Nat
+segmentCount segs = foldr (\s, acc => acc + 1 + segmentCount (segInnerSegments s)) 0 segs
+
+-- =========================================================================
+-- maxDrawdown: compute maximum drawdown within a segment
 -- =========================================================================
 
 public export
-leafCount : BranchResult -> Nat
-leafCount branch = length (brInnerLeaves branch)
-
--- =========================================================================
--- maxDrawdown: compute maximum drawdown within a branch
--- =========================================================================
-
-public export
-maxDrawdown : BranchResult -> Double
-maxDrawdown branch =
-  let allLeaves : List Leaf
-      allLeaves = brInnerLeaves branch
+maxDrawdown : Segment -> Double
+maxDrawdown seg =
+  let bars : List LeafBar
+      bars = segInnerBars seg
       endVal : Double
-      endVal = branchEndValue branch
+      endVal = segEndValue seg
       drops : List Double
-      drops = map (\l => value (startBar l) - endVal) allLeaves
+      drops = map (\b => lbValue b - endVal) bars
   in foldr max 0.0 drops
 
 -- =========================================================================
--- volatility: compute price volatility within a branch
+-- volatility: compute price volatility within a segment
 -- =========================================================================
 
 public export
-volatility : BranchResult -> Double
-volatility branch =
-  let allLeaves : List Leaf
-      allLeaves = brInnerLeaves branch
+volatility : Segment -> Double
+volatility seg =
+  let bars : List LeafBar
+      bars = segInnerBars seg
       vals : List Double
-      vals = map (\l => value (startBar l)) allLeaves
+      vals = map lbValue bars
       n : Nat
       n = length vals
       sum : Double
@@ -112,37 +108,40 @@ volatility branch =
   in sqrt varianceNorm
 
 -- =========================================================================
--- branchPattern: classify branch pattern for AI analysis
+-- SegmentPattern: classify segment pattern for AI analysis
 -- =========================================================================
 
 public export
-data BranchPattern = Steep | Gradual | Choppy | Flat
+data SegmentPattern = Steep | Gradual | Choppy | Flat
 
 public export
-classifyBranchPattern : BranchResult -> BranchPattern
-classifyBranchPattern branch =
-  let density = leafCount branch
-      ret = abs (branchEndValue branch - branchStartValue branch)
-      len = natToDouble (branchBarsCount branch)
+classifySegmentPattern : Segment -> SegmentPattern
+classifySegmentPattern seg =
+  let density : Nat
+      density = length (segInnerBars seg)
+      ret : Double
+      ret = abs (segEndValue seg - segStartValue seg)
+      len : Double
+      len = natToDouble (segBarsCount seg)
   in if len == 0 then Flat
      else if density < 3 then Steep
      else if ret / len < 0.01 then Choppy
      else Gradual
 
 -- =========================================================================
--- summarizeBranches: generate human-readable summary
+-- summarizeSegments: generate human-readable summary
 -- =========================================================================
 
 public export
-summarizeBranches : List BranchResult -> String
-summarizeBranches [] = "No branches detected"
-summarizeBranches branches =
-  let metrics = computeBranchMetrics branches
-      totalB = totalBranches metrics
-      yangPct = if totalB > 0
-                then natToDouble (yangBranches metrics) / natToDouble totalB * 100
-                else 0.0
-  in "Branches: " ++ show totalB
-     ++ " (Yang: " ++ show yangPct ++ "%)"
-     ++ " | Avg Length: " ++ show (avgBranchLength metrics)
-     ++ " | Avg Return: " ++ show (avgBranchReturn metrics)
+summarizeSegments : List Segment -> String
+summarizeSegments [] = "No segments detected"
+summarizeSegments segs =
+  let metrics = computeSegmentMetrics segs
+      totalN = totalSegments metrics
+      risingPct = if totalN > 0
+                  then natToDouble (risingSegments metrics) / natToDouble totalN * 100
+                  else 0.0
+  in "Segments: " ++ show totalN
+     ++ " (Rising: " ++ show risingPct ++ "%)"
+     ++ " | Avg Length: " ++ show (avgSegLength metrics)
+     ++ " | Avg Return: " ++ show (avgSegReturn metrics)

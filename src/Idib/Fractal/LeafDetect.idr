@@ -1,7 +1,6 @@
 module Idib.Fractal.LeafDetect
 
 import Data.List
-import Data.So
 import Idib.Fractal.Leaf
 
 %default total
@@ -19,28 +18,35 @@ safeTail [] = []
 safeTail (_ :: xs) = xs
 
 -- =========================================================================
--- detectLeaf: detect alternating leaf sequence from a list of bars
--- Matches glib's running peak/trough count logic
+-- Detects leaf-level segments using running peak/trough.
+-- Matches glib's running peak/trough logic.
+--
+-- Algorithm:
+--   Track current segment start and extremum.
+--   When a bar exceeds the extremum → finalize current leaf, start new one.
+--   Always starts with a Rising (Yang) leaf — first bar is a trough.
+--
+-- Returns: List Segment (all LeafSeg)
 -- =========================================================================
 
 public export
-detectLeaf : List LeafBar -> List Leaf
+detectLeaf : List LeafBar -> List Segment
 detectLeaf [] = []
 detectLeaf (x :: xs) = go x x 1 [x] xs
   where
-    go : LeafBar -> LeafBar -> Nat -> List LeafBar -> List LeafBar -> List Leaf
+    mkLeaf : SegmentKind -> LeafBar -> LeafBar -> List LeafBar -> Segment
+    mkLeaf sk s e inner = LeafSeg (MkFractal sk s e inner)
+
+    go : LeafBar -> LeafBar -> Nat -> List LeafBar -> List LeafBar -> List Segment
     go startY currentMax count acc [] =
-      [MkLeaf YangLeaf startY (lastWithDefault acc currentMax) (reverse (safeTail acc))]
+      [mkLeaf Rising startY (lastWithDefault acc currentMax) (reverse (safeTail acc))]
     go startY currentMax count acc (b :: rest) =
-      if b.value > currentMax.value then
-        let endBar = lastWithDefault acc currentMax
-            innerBars = reverse (safeTail acc)
-            leaf = MkLeaf YangLeaf startY endBar innerBars
+      if lbValue b > lbValue currentMax then
+        let leaf = mkLeaf Rising startY (lastWithDefault acc currentMax) (reverse (safeTail acc))
         in leaf :: go b b 1 [b] rest
-      else if b.value < startY.value then
-        let endBar = lastWithDefault acc currentMax
-            innerBars = reverse (safeTail acc)
-            leaf = MkLeaf YinLeaf startY endBar innerBars
+      else if lbValue b < lbValue startY then
+        let leaf = mkLeaf Falling startY (lastWithDefault acc currentMax) (reverse (safeTail acc))
         in leaf :: go b b 1 [b] rest
       else
-        go startY (if b.value > currentMax.value then b else currentMax) (count + 1) (b :: acc) rest
+        let newMax = if lbValue b > lbValue currentMax then b else currentMax
+        in go startY newMax (count + 1) (b :: acc) rest
