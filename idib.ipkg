@@ -1,0 +1,23 @@
+package idib
+
+  -- Source directory
+  sourcedir = "src"
+
+  -- Packages required
+  -- (none for core library)
+
+  -- Modules
+  modules =
+    Idib.Types,
+    Idib.Vector,
+    Idib.Indicators.SMA,
+    Idib.Indicators.BollingerBands,
+    Idib.Indicators.KDJ,
+    Idib.Indicators.ChartBar,
+    Idib.Strategy.Position,
+    Idib.Strategy.Helpers,
+    Idib.Strategy.Evaluate,
+    Idib.Strategy.SignalSeries,
+    Idib.MultiTF,
+    Idib.Strategy.MultiTF,
+    Idib.Server.MultiChart
