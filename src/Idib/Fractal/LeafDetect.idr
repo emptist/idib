@@ -41,10 +41,10 @@ detectLeaf bars = go 0 0 (lbValue (head bars)) 0 bars
           let currentIdx = count
               currentVal = lbValue b
           in if currentVal > extremumVal then
-            let leaf = LeafSeg (MkFractal Rising startIdx 0 currentIdx)
+            let leaf = LeafSeg (MkFractal Rising startIdx currentIdx)
             in leaf :: go currentIdx currentIdx currentVal (count + 1) bs
           else if currentVal < lbValue (atIdx bars startIdx) then
-            let leaf = LeafSeg (MkFractal Falling startIdx 0 currentIdx)
+            let leaf = LeafSeg (MkFractal Falling startIdx currentIdx)
             in leaf :: go currentIdx currentIdx currentVal (count + 1) bs
           else
             let (newExtremumIdx, newExtremumVal) =

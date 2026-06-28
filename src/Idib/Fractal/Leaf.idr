@@ -34,27 +34,26 @@ record LeafBar where
 
 -- =========================================================================
 -- Fractal: index range into source bars — the superclass record
--- No bar data stored. Source bars are the single truth.
 -- =========================================================================
 
 public export
 record Fractal where
   constructor MkFractal
-  fKind      : SegmentKind
-  fStartIdx  : Nat
-  fRecognIdx : Nat  -- where we recognize this segment (0 for leaves)
-  fEndIdx    : Nat
+  fKind     : SegmentKind
+  fStartIdx : Nat
+  fEndIdx   : Nat
 
 -- =========================================================================
 -- Segment: the recursive ADT
---   LeafSeg   — leaf-level extremum segment
---   BranchSeg — higher-level segment grouping consecutive same-kind leaves
+--   LeafSeg   — leaf-level extremum segment (no recognition delay)
+--   BranchSeg — higher-level segment with recognIdx
 -- =========================================================================
 
 public export
 data Segment : Type where
   LeafSeg   : Fractal -> Segment
-  BranchSeg : Fractal -> Bool -> Segment
+  BranchSeg : Fractal -> Nat -> Bool -> Segment
+  --                     ^recognIdx
 
 -- =========================================================================
 -- Segment accessors
@@ -62,23 +61,18 @@ data Segment : Type where
 
 public export
 segKind : Segment -> SegmentKind
-segKind (LeafSeg f)       = fKind f
-segKind (BranchSeg f _)   = fKind f
+segKind (LeafSeg f)         = fKind f
+segKind (BranchSeg f _ _)   = fKind f
 
 public export
 segStartIdx : Segment -> Nat
-segStartIdx (LeafSeg f)       = fStartIdx f
-segStartIdx (BranchSeg f _)   = fStartIdx f
-
-public export
-segRecognIdx : Segment -> Nat
-segRecognIdx (LeafSeg f)       = fRecognIdx f
-segRecognIdx (BranchSeg f _)   = fRecognIdx f
+segStartIdx (LeafSeg f)         = fStartIdx f
+segStartIdx (BranchSeg f _ _)   = fStartIdx f
 
 public export
 segEndIdx : Segment -> Nat
-segEndIdx (LeafSeg f)       = fEndIdx f
-segEndIdx (BranchSeg f _)   = fEndIdx f
+segEndIdx (LeafSeg f)         = fEndIdx f
+segEndIdx (BranchSeg f _ _)   = fEndIdx f
 
 public export
 segBarsCount : Segment -> Nat
@@ -86,18 +80,23 @@ segBarsCount s = minus (segEndIdx s) (segStartIdx s)
 
 public export
 isLeaf : Segment -> Bool
-isLeaf (LeafSeg _)       = True
-isLeaf (BranchSeg _ _)   = False
+isLeaf (LeafSeg _)         = True
+isLeaf (BranchSeg _ _ _)   = False
 
 public export
 isBranch : Segment -> Bool
-isBranch (LeafSeg _)       = False
-isBranch (BranchSeg _ _)   = True
+isBranch (LeafSeg _)         = False
+isBranch (BranchSeg _ _ _)   = True
+
+public export
+segRecognIdx : Segment -> Nat
+segRecognIdx (LeafSeg f)         = fStartIdx f  -- leaves: same as start
+segRecognIdx (BranchSeg _ r _)   = r
 
 public export
 segConfirmed : Segment -> Bool
-segConfirmed (LeafSeg _)       = False
-segConfirmed (BranchSeg _ c)   = c
+segConfirmed (LeafSeg _)         = False
+segConfirmed (BranchSeg _ _ c)   = c
 
 -- =========================================================================
 -- slice: extract sub-list by index range
@@ -108,7 +107,7 @@ slice : List a -> Nat -> Nat -> List a
 slice xs start end = take (minus end start) (drop start xs)
 
 -- =========================================================================
--- Value helpers: look up bar value at segment start/end from source
+-- Value helpers: look up bar value from source bars by index
 -- =========================================================================
 
 barAt : List LeafBar -> Nat -> Double
