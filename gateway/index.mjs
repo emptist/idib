@@ -3,7 +3,7 @@
 
 import { IBGateway } from './ib.mjs'
 import { SSEServer } from './sse.mjs'
-import { detectFractal } from '../ffi/idib-ffi.mjs'
+import { detectLeaf, computeChartBarsInc } from '../ffi/idib-ffi.mjs'
 
 const IB_HOST = process.env.IB_HOST || '127.0.0.1'
 const IB_PORT = parseInt(process.env.IB_PORT || '7497')
@@ -30,7 +30,6 @@ async function main() {
     console.error('IB:', err.message, '— offline mode')
   }
 
-  // Handle requests from dashboard via SSE POST or query
   sse.onRequest = async (symbol, intervals) => {
     if (!ibConnected) {
       sse.broadcast('system', { error: 'IB not connected' })
@@ -47,17 +46,20 @@ async function main() {
         })
 
         if (data.ok && data.bars.length > 0) {
-          const bars = data.bars.map((b, i) => ({ index: i, value: b.close }))
-          const fractal = detectFractal(bars, { interval })
+          // 1. Detect fractal leaves (from close prices)
+          const leafBars = data.bars.map((b, i) => ({ index: i, value: b.close }))
+          const leaves = detectLeaf(leafBars)
+
+          // 2. Compute all indicators incrementally (O(N), no recomputation)
+          const chartBars = computeChartBarsInc(leaves, data.bars)
 
           sse.broadcast(symbol, {
             interval,
-            chartBars: data.bars,
-            leaves: fractal.leaves,
-            branches: fractal.branches,
+            chartBars,
+            leaves,
             timestamp: new Date().toISOString(),
           })
-          console.log(`  ${symbol} [${interval}]: ${data.bars.length} bars, ${fractal.leaves.length} leaves`)
+          console.log(`  ${symbol} [${interval}]: ${data.bars.length} bars, ${leaves.length} leaves, ${chartBars.length} chartBars`)
         }
       } catch (err) {
         console.error(`  ${symbol} [${interval}]: ${err.message}`)

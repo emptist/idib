@@ -97,6 +97,60 @@ function jsonToBranchConfig(json) {
   };
 }
 
+// --- Bar marshalling (OHLCV) ---
+// Bar record: {a1: date, a2: opn, a3: high, a4: low, a5: close, a6: volume}
+// Volume is Nat (bigint)
+
+function jsonToBar(json) {
+  return {
+    a1: json.date || '',
+    a2: json.opn || json.open || 0.0,
+    a3: json.high || 0.0,
+    a4: json.low || 0.0,
+    a5: json.close || 0.0,
+    a6: numberToNat(json.volume || 0)
+  };
+}
+
+function barToJson(bar) {
+  return {
+    date: bar.a1,
+    opn: bar.a2,
+    high: bar.a3,
+    low: bar.a4,
+    close: bar.a5,
+    volume: natToNumber(bar.a6)
+  };
+}
+
+// --- ChartBar marshalling ---
+// ChartBar record: {a1: bar, a2: sma7, a3: bbm, a4: bbu, a5: bbl,
+//   a6: bb6u, a7: bb4u, a8: bb4l, a9: bb6l,
+//   a10: cmah7, a11: cmal7, a12: hlcmah7,
+//   a13: k, a14: d, a15: j, a16: m, a17: signal}
+
+function chartBarToJson(cb) {
+  return {
+    bar: barToJson(cb.a1),
+    sma7: cb.a2,
+    bbm: cb.a3,
+    bbu: cb.a4,
+    bbl: cb.a5,
+    bb6u: cb.a6,
+    bb4u: cb.a7,
+    bb4l: cb.a8,
+    bb6l: cb.a9,
+    cmah7: cb.a10,
+    cmal7: cb.a11,
+    hlcmah7: cb.a12,
+    k: cb.a13,
+    d: cb.a14,
+    j: cb.a15,
+    m: cb.a16,
+    signal: cb.a17
+  };
+}
+
 export {
   natToNumber,
   numberToNat,
@@ -106,5 +160,8 @@ export {
   leafBarToJson,
   segmentToJson,
   jsonToSegment,
-  jsonToBranchConfig
+  jsonToBranchConfig,
+  jsonToBar,
+  barToJson,
+  chartBarToJson
 };

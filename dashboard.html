@@ -43,10 +43,12 @@
         .col-hdr h2 { font-size: 0.85em; color: #aaa; }
         .col-hdr .info { font-size: 0.7em; color: #666; }
         .chart { flex: 1; min-height: 0; }
+        .kdj-chart { height: 80px; min-height: 0; }
         .segs { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 3px; max-height: 60px; overflow-y: auto; }
         .seg { padding: 1px 4px; border-radius: 2px; font-size: 0.6em; font-family: monospace; }
         .seg.y { background: #1a4a2a; color: #4ae68a; }
         .seg.n { background: #4a1a2a; color: #e64a6a; }
+        .seg.sig { background: #2a2a4a; color: #aaa; }
         #log {
             position: fixed; bottom: 0; left: 0; right: 0;
             font-size: 0.6em; color: #444; padding: 2px 12px;
@@ -69,6 +71,7 @@
                 <span class="info" id="i-left">—</span>
             </div>
             <div id="c-left" class="chart"></div>
+            <div id="k-left" class="kdj-chart"></div>
             <div class="segs" id="s-left"></div>
         </div>
         <div class="col">
@@ -77,6 +80,7 @@
                 <span class="info" id="i-right">—</span>
             </div>
             <div id="c-right" class="chart"></div>
+            <div id="k-right" class="kdj-chart"></div>
             <div class="segs" id="s-right"></div>
         </div>
     </div>
@@ -88,7 +92,7 @@
         el.textContent = new Date().toLocaleTimeString() + ' ' + m + '\n' + el.textContent
     }
 
-    function makeChart(elId) {
+    function makeChart(elId, kdjElId) {
         const el = document.getElementById(elId)
         const ch = LightweightCharts.createChart(el, {
             layout: { background: { color: '#111128' }, textColor: '#aaa' },
@@ -105,7 +109,27 @@
             priceFormat: { type: 'volume' }, priceScaleId: 'v',
         })
         ch.priceScale('v').applyOptions({ scaleMargins: { top: 0.88, bottom: 0 } })
-        return { ch, cs, vs }
+
+        // Indicator lines
+        const sma7Line = ch.addLineSeries({ color: '#f1c40f', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
+        const bbmLine = ch.addLineSeries({ color: '#9b59b6', lineWidth: 1, lineStyle: 0, priceLineVisible: false, lastValueVisible: false })
+        const bbuLine = ch.addLineSeries({ color: '#9b59b644', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false })
+        const bblLine = ch.addLineSeries({ color: '#9b59b644', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false })
+
+        // KDJ sub-chart
+        const kEl = document.getElementById(kdjElId)
+        const kCh = LightweightCharts.createChart(kEl, {
+            layout: { background: { color: '#111128' }, textColor: '#aaa' },
+            grid: { vertLines: { color: '#1a1a3e' }, horzLines: { color: '#1a1a3e' } },
+            crosshair: { mode: 0 },
+            timeScale: { visible: false },
+            rightPriceScale: { scaleMargins: { top: 0.1, bottom: 0.1 } },
+        })
+        const kLine = kCh.addLineSeries({ color: '#3498db', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
+        const dLine = kCh.addLineSeries({ color: '#e67e22', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
+        const jLine = kCh.addLineSeries({ color: '#e74c3c', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
+
+        return { ch, cs, vs, sma7Line, bbmLine, bbuLine, bblLine, kCh, kLine, dLine, jLine }
     }
 
     function pt(s) {
@@ -114,16 +138,20 @@
         return Math.floor(new Date(m[1], m[2]-1, m[3], m[4], m[5], m[6]).getTime() / 1000)
     }
 
-    const left = makeChart('c-left')
-    const right = makeChart('c-right')
+    function fmtTime(t) {
+        const d = new Date(t * 1000)
+        return d.toISOString().slice(0, 16)
+    }
 
-    const panelMap = {}  // interval → 'left' | 'right'
+    const left = makeChart('c-left', 'k-left')
+    const right = makeChart('c-right', 'k-right')
+
+    const panelMap = {}
 
     function update(data) {
         const iv = data.interval
         if (!iv) return
 
-        // Map interval to panel: first interval → left, second → right
         if (!panelMap[iv]) {
             const used = new Set(Object.values(panelMap))
             panelMap[iv] = used.has('left') ? 'right' : 'left'
@@ -137,23 +165,44 @@
 
         if (bars.length) {
             const candles = bars.map(b => ({
-                time: pt(b.date), open: b.open, high: b.high, low: b.low, close: b.close,
+                time: pt(b.bar.date), open: b.bar.opn, high: b.bar.high,
+                low: b.bar.low, close: b.bar.close,
             })).filter(c => c.time > 0).sort((a, b) => a.time - b.time)
 
             ch.cs.setData(candles)
             ch.vs.setData(bars.map(b => ({
-                time: pt(b.date), value: b.volume || 0,
-                color: b.close >= b.open ? '#4ae68a44' : '#e64a6a44',
+                time: pt(b.bar.date), value: b.bar.volume || 0,
+                color: b.bar.close >= b.bar.opn ? '#4ae68a44' : '#e64a6a44',
             })).filter(c => c.time > 0))
 
+            // Indicator lines
+            const toLine = (fn) => bars.map(b => ({
+                time: pt(b.bar.date), value: fn(b),
+            })).filter(c => c.time > 0 && c.value !== 0)
+
+            ch.sma7Line.setData(toLine(b => b.sma7))
+            ch.bbmLine.setData(toLine(b => b.bbm))
+            ch.bbuLine.setData(toLine(b => b.bbu))
+            ch.bblLine.setData(toLine(b => b.bbl))
+
+            // KDJ lines
+            ch.kLine.setData(toLine(b => b.k))
+            ch.dLine.setData(toLine(b => b.d))
+            ch.jLine.setData(toLine(b => b.j))
+
             ch.ch.timeScale().fitContent()
+            ch.kCh.timeScale().fitContent()
         }
 
-        const all = [...(data.leaves || []), ...(data.branches || [])]
+        // Fractal segments + signals
+        const all = [...(data.leaves || [])]
         document.getElementById('s-' + side).innerHTML = all.map(s => {
             const c = s.kind.startsWith('Yang') ? 'y' : 'n'
             const l = s.kind.replace('Leaf', 'L').replace('Branch', 'B')
             return `<span class="seg ${c}">${l}[${s.startIdx}..${s.endIdx}]</span>`
+        }).join('') + bars.filter(b => b.signal && b.signal !== 'hold' && b.signal !== 'holding').map(b => {
+            const sig = b.signal === 'buy' ? 'BUY' : b.signal === 'sell' ? 'SELL' : b.signal.toUpperCase()
+            return `<span class="seg sig">${sig} @${fmtTime(pt(b.bar.date))}</span>`
         }).join('')
     }
 

@@ -3,6 +3,9 @@ package idib
   -- Source directory
   sourcedir = "src"
 
+  -- Build to Node.js
+  -- codegen set via directive
+
   -- Packages required
   -- (none for core library)
 
@@ -14,6 +17,7 @@ package idib
     Idib.Indicators.BollingerBands,
     Idib.Indicators.KDJ,
     Idib.Indicators.ChartBar,
+    Idib.Indicators.Incremental,
     Idib.Strategy.Position,
     Idib.Strategy.Helpers,
     Idib.Strategy.Evaluate,

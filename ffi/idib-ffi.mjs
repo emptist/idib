@@ -9,7 +9,8 @@ import {
   idrisListToArray, arrayToList,
   jsonToLeafBar, leafBarToJson,
   segmentToJson, jsonToSegment,
-  jsonToBranchConfig
+  jsonToBranchConfig,
+  jsonToBar, barToJson, chartBarToJson
 } from '../support/js/idib_support.js'
 
 // --- Import compiled Idris module ---
@@ -69,4 +70,20 @@ export function detectFractal(bars, config = { interval: 'Day1' }) {
   const leaves = detectLeaf(bars);
   const branches = detectBranch(config, bars, leaves);
   return { leaves, branches };
+}
+
+/**
+ * Compute all indicators incrementally using fractal leaves.
+ * O(N) total, O(1) per bar — no recomputation.
+ * @param {Array} leaves - Leaf segments from detectLeaf
+ * @param {Array<{date:string, opn:number, high:number, low:number, close:number, volume:number}>} bars - OHLCV bars
+ * @returns {Array<{bar, sma7, bbm, bbu, bbl, bb6u, bb4u, bb4l, bb6l, k, d, j, m, signal}>}
+ */
+export function computeChartBarsInc(leaves, bars) {
+  const idrisLeaves = arrayToList(leaves.map(jsonToSegment));
+  const idrisBars = arrayToList(bars.map(jsonToBar));
+  const result = idibModule.Idib_Indicators_Incremental_computeChartBarsInc(
+    6, idrisLeaves, idrisBars  // 6 = Day1 interval tag
+  );
+  return idrisListToArray(result).map(chartBarToJson);
 }
