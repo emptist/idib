@@ -56,8 +56,8 @@ idib/
 ### Leaf/Branch Segments (Research)
 - **Leaf**: Extremum-based alternating sequence (ported from glib's `Fish.idr`)
 - **Branch**: Two-level detection with N-bar confirmation + back-counting
-  - YangFish: TRUE start = lowest in subsequent SimpleYin (found at new HIGH)
-  - YinFish: TRUE start = highest in subsequent SimpleYang (found at new LOW)
+  - YangBranch: TRUE start = lowest in subsequent YinLeaf (found at new HIGH)
+  - YinBranch: TRUE start = highest in subsequent YangLeaf (found at new LOW)
   - N = 2 × barsPerMonth(interval): 1mo=2, 1wk=8, 1d=40, 1h=260, 4h=64
   - **Disabled for sub-hourly** (Min1/5/15/30 return 0 barsPerMonth)
 - **Parameter-free except N** (interval-derived, not tuned) — "natural" segments

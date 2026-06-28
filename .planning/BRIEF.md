@@ -32,8 +32,8 @@ idib-frontend/      # Static files (copied from glib/priv/index.html)
 ### Leaf/Branch Segments (Phase 01-02, Research)
 - **Leaf**: Extremum-based alternating sequence (from existing glib Fish.idr)
 - **Branch**: N-bar confirmation with back-counting
-  - YangFish: starts at low, TRUE start = lowest in subsequent SimpleYin (back-count at new HIGH)
-  - YinFish: starts at high, TRUE start = highest in subsequent SimpleYang (back-count at new LOW)
+  - YangBranch: starts at low, TRUE start = lowest in subsequent YinLeaf (back-count at new HIGH)
+  - YinBranch: starts at high, TRUE start = highest in subsequent YangLeaf (back-count at new LOW)
   - N = 2 * barsPerMonth(interval): 1mo=2, 1wk=8, 1d=40, 1h=260, 4h=64
   - **Disabled for sub-hourly** (noise makes segments unreliable)
 - **Parameter-free except N** (interval-derived, not tuned) — segments are "natural"
