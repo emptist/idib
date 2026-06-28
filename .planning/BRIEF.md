@@ -11,12 +11,12 @@ Rewrite glib's trading logic in Idris 2 with dependent types for correctness gua
 5. **Config validation**: `IndicatorConfig` with compile-time defaults, no magic numbers
 
 ## Scope
-- **In scope**: All indicator math (SMA, BB, KDJ), strategy logic (buy/sell/bbuy), signal series, multi-timeframe, Leaf/Branch segment detection (research)
+- **In scope**: All indicator math (SMA, BB, KDJ), strategy logic (buy/sell/bbuy), signal series, multi-timeframe, Fractal segment detection (research)
 - **Out of scope**: IB Gateway connectivity, WebSocket server, charting frontend (reuse glib's index.html via static serve)
 
 ## Architecture
 ```
-idib-core/          # Pure Idris 2: types, indicators, strategy, signal series, Leaf/Branch
+idib-core/          # Pure Idris 2: types, indicators, strategy, signal series, Fractal
 idib-server/        # Thin Node.js wrapper: IB Gateway → idib-core → SSE
 idib-frontend/      # Static files (copied from glib/priv/index.html)
 ```
@@ -29,7 +29,7 @@ idib-frontend/      # Static files (copied from glib/priv/index.html)
 - KDJ: RSV → SMA(K) → SMA(D) → SMA(M), rolling max/min with expanding fallback
 - All return `Vect n Double` — same length as input, bar 1 has valid value
 
-### Leaf/Branch Segments (Phase 01-02, Research)
+### Fractal Segments (Phase 01-02, Research)
 - **Leaf**: Extremum-based alternating sequence (from existing glib Fish.idr)
 - **Branch**: N-bar confirmation with back-counting
   - YangBranch: starts at low, TRUE start = lowest in subsequent YinLeaf (back-count at new HIGH)
@@ -70,4 +70,4 @@ glib at `../glib` — exact behavior match required. Key files:
 - All indicator outputs bitwise-match glib for same input
 - Strategy signals match glib for historical SPY data
 - Type errors catch: misaligned bars, wrong interval config, invalid state transitions
-- Leaf/Branch segments at 1h+/1d/1wk/1mo match visual rising/falling sections
+- Fractal segments at 1h+/1d/1wk/1mo match visual rising/falling sections

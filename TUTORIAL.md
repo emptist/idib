@@ -5,7 +5,7 @@ not a general language tour — it focuses on the features we use to replace
 `glib`'s Gleam code: **dependent types**, **totality**, **proof-carrying
 data**, and **Node.js FFI**.
 
-Examples are drawn from trading-engine domain (bars, indicators, leaf/branch
+Examples are drawn from trading-engine domain (bars, indicators, fractal
 sequences, risk checks) so the mapping to `../glib/src/glib/**.gleam` is
 direct.
 
@@ -635,12 +635,12 @@ Once `WindowedSMA` exists, the three indicator modules (`Bollinger`,
 `SMA7`, `KDJ`) become thin wrappers, and the "expanding-window fallback
 missing" bugs that `glib` has in three separate places are fixed in one.
 
-### 13.5 `Leaf` / `Branch` as dependent types
+### 13.5 `Leaf` / `Branch` as dependent types (Fractal)
 
 The same REVIEW_REFERENCE.md notes that `glib`'s `sma7` segment tracking
 (hrows7, cmah7, …) *is* Leaf on SMA7, but never named as such. `idib` makes
 the abstraction first-class — `Fish.idr` already exists in `../glib` as a
-prototype (we call it Leaf/Branch). Its alternation invariant (`BranchSeq Yang` cannot hold two
+prototype (we call it Fractal: Leaf/Branch). Its alternation invariant (`BranchSeq Yang` cannot hold two
 consecutive Yang leaves) is enforced by the GADT's constructor signatures;
 no runtime check, no unit test, no comment.
 

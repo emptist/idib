@@ -30,7 +30,7 @@ idib/
 │   │   │   ├── BollingerBands.idr   # BB + Fibonacci lines
 │   │   │   ├── KDJ.idr              # RSV → SMA(K/D/M), rolling max/min
 │   │   │   └── ChartBar.idr         # Unified computeChartBars
-│   │   ├── Leaf/                      # Leaf/Branch segment detection
+│   │   ├── Fractal/                     # Fractal segment detection (Leaf/Branch)
 │   │   │   ├── Types.idr            # Branch types, interval-gated N
 │   │   │   ├── Leaf.idr             # Leaf (extremum-based, from glib)
 │   │   │   ├── LeafDetect.idr       # Leaf detection
@@ -53,7 +53,7 @@ idib/
 - Expanding-window fallback: bar 1 returns value, not `Nothing`
 - Output: `Vect n Double` — same length as input, no alignment issues
 
-### Leaf/Branch Segments (Research)
+### Fractal Segments (Research)
 - **Leaf**: Extremum-based alternating sequence (ported from glib's `Fish.idr`)
 - **Branch**: Two-level detection with N-bar confirmation + back-counting
   - YangBranch: TRUE start = lowest in subsequent YinLeaf (found at new HIGH)
