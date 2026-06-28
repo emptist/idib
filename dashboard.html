@@ -12,11 +12,12 @@
             background: #0a0a1a; color: #eee;
         }
         header {
-            display: flex; align-items: center; justify-content: space-between;
+            display: flex; align-items: center; gap: 12px;
             padding: 6px 12px; background: #111128; border-bottom: 1px solid #1a1a3e;
         }
         header h1 { font-size: 1em; color: #e94560; }
-        #status { font-size: 0.75em; padding: 2px 8px; border-radius: 3px; }
+        #symbol { font-size: 1.1em; font-weight: bold; color: #4ae68a; }
+        #status { font-size: 0.7em; padding: 2px 6px; border-radius: 3px; margin-left: auto; }
         #status.ok { background: #2ecc71; color: #000; }
         #status.err { background: #e74c3c; }
         #status.off { background: #f39c12; color: #000; }
@@ -29,36 +30,33 @@
         }
         .tab:hover { background: #252550; color: #ccc; }
         .tab.active { background: #111128; color: #e94560; }
-        .chart-panel {
-            display: none; padding: 8px 12px;
-        }
-        .chart-panel.active { display: block; }
-        .chart-header {
+        .panel { display: none; padding: 8px 12px; }
+        .panel.active { display: block; }
+        .panel-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 4px;
         }
-        .chart-header h2 { font-size: 0.95em; color: #e94560; }
-        .chart-header .info { font-size: 0.8em; color: #666; }
-        .chart { width: 100%; height: 380px; }
-        .segments {
-            display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px;
-        }
+        .panel-header h2 { font-size: 0.9em; color: #aaa; }
+        .panel-header .count { font-size: 0.75em; color: #666; }
+        .chart { width: 100%; height: 320px; }
+        .segments { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 4px; }
         .seg {
-            padding: 2px 6px; border-radius: 2px; font-size: 0.7em; font-family: monospace;
+            padding: 1px 5px; border-radius: 2px; font-size: 0.65em; font-family: monospace;
         }
         .seg.yang { background: #1a4a2a; color: #4ae68a; }
         .seg.yin { background: #4a1a2a; color: #e64a6a; }
         #log {
             position: fixed; bottom: 0; left: 0; right: 0;
-            font-size: 0.7em; color: #444; padding: 4px 12px;
+            font-size: 0.65em; color: #444; padding: 3px 12px;
             background: #0a0a1acc; font-family: monospace;
-            max-height: 80px; overflow-y: auto; border-top: 1px solid #1a1a3e;
+            max-height: 60px; overflow-y: auto; border-top: 1px solid #1a1a3e;
         }
     </style>
 </head>
 <body>
     <header>
         <h1>idib</h1>
+        <span id="symbol">—</span>
         <span id="status" class="off">connecting...</span>
     </header>
     <div class="tabs" id="tabs"></div>
@@ -71,123 +69,105 @@
         el.textContent = new Date().toLocaleTimeString() + ' ' + msg + '\n' + el.textContent
     }
 
-    // Per-symbol chart instances
-    const charts = {}  // symbol → { chart, candleSeries, volumeSeries }
+    const instances = {}  // interval → { chart, candle, vol, tab }
 
-    function ensureChart(symbol) {
-        if (charts[symbol]) return charts[symbol]
+    function ensurePanel(interval) {
+        if (instances[interval]) return instances[interval]
 
-        // Create tab
-        const tabs = document.getElementById('tabs')
         const tab = document.createElement('button')
         tab.className = 'tab'
-        tab.textContent = symbol
-        tab.onclick = () => showPanel(symbol)
-        tabs.appendChild(tab)
+        tab.textContent = interval
+        tab.onclick = () => showPanel(interval)
+        document.getElementById('tabs').appendChild(tab)
 
-        // Create panel
-        const panels = document.getElementById('panels')
         const panel = document.createElement('div')
-        panel.className = 'chart-panel'
-        panel.id = 'panel-' + symbol
+        panel.className = 'panel'
+        panel.id = 'panel-' + interval
         panel.innerHTML = `
-            <div class="chart-header">
-                <h2>${symbol}</h2>
-                <span class="info" id="info-${symbol}">—</span>
+            <div class="panel-header">
+                <h2>${interval}</h2>
+                <span class="count" id="count-${interval}">—</span>
             </div>
-            <div id="chart-${symbol}" class="chart"></div>
-            <div class="segments" id="segs-${symbol}"></div>
+            <div id="chart-${interval}" class="chart"></div>
+            <div class="segments" id="segs-${interval}"></div>
         `
-        panels.appendChild(panel)
+        document.getElementById('panels').appendChild(panel)
 
-        // Create chart
-        const chart = LightweightCharts.createChart(document.getElementById('chart-' + symbol), {
+        const chart = LightweightCharts.createChart(document.getElementById('chart-' + interval), {
             layout: { background: { color: '#111128' }, textColor: '#aaa' },
             grid: { vertLines: { color: '#1a1a3e' }, horzLines: { color: '#1a1a3e' } },
             crosshair: { mode: 0 },
             timeScale: { timeVisible: true },
         })
-        const candleSeries = chart.addCandlestickSeries({
+        const candle = chart.addCandlestickSeries({
             upColor: '#4ae68a', downColor: '#e64a6a',
             borderUpColor: '#4ae68a', borderDownColor: '#e64a6a',
             wickUpColor: '#4ae68a', wickDownColor: '#e64a6a',
         })
-        const volumeSeries = chart.addHistogramSeries({
-            priceFormat: { type: 'volume' },
-            priceScaleId: 'vol',
+        const vol = chart.addHistogramSeries({
+            priceFormat: { type: 'volume' }, priceScaleId: 'vol',
         })
-        chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } })
+        chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.88, bottom: 0 } })
 
-        charts[symbol] = { chart, candleSeries, volumeSeries, tab }
-        showPanel(symbol)
-        return charts[symbol]
+        instances[interval] = { chart, candle, vol, tab }
+        showPanel(interval)
+        return instances[interval]
     }
 
-    function showPanel(symbol) {
-        document.querySelectorAll('.chart-panel').forEach(p => p.classList.remove('active'))
+    function showPanel(interval) {
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'))
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
-        const panel = document.getElementById('panel-' + symbol)
-        if (panel) panel.classList.add('active')
-        if (charts[symbol]) charts[symbol].tab.classList.add('active')
+        const p = document.getElementById('panel-' + interval)
+        if (p) p.classList.add('active')
+        if (instances[interval]) instances[interval].tab.classList.add('active')
     }
 
-    function parseTime(dateStr) {
-        const m = dateStr.match(/(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/)
+    function parseTime(s) {
+        const m = s.match(/(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/)
         if (!m) return 0
         return Math.floor(new Date(m[1], m[2]-1, m[3], m[4], m[5], m[6]).getTime() / 1000)
     }
 
-    function updateChart(symbol, data) {
-        const inst = ensureChart(symbol)
-        const bars = data.chartBars || data.bars || []
+    function update(data) {
+        const interval = data.interval || '—'
+        const symbol = data.symbol || '—'
+        const inst = ensurePanel(interval)
 
-        document.getElementById('info-' + symbol).textContent =
-            `${bars.length} bars — ${data.interval || '—'}`
+        document.getElementById('symbol').textContent = symbol
 
-        const candles = bars.map(b => ({
-            time: parseTime(b.date),
-            open: b.open, high: b.high, low: b.low, close: b.close,
-        })).filter(c => c.time > 0).sort((a, b) => a.time - b.time)
+        const bars = data.chartBars || []
+        if (bars.length > 0) {
+            document.getElementById('count-' + interval).textContent = bars.length + ' bars'
+            const candles = bars.map(b => ({
+                time: parseTime(b.date),
+                open: b.open, high: b.high, low: b.low, close: b.close,
+            })).filter(c => c.time > 0).sort((a, b) => a.time - b.time)
 
-        inst.candleSeries.setData(candles)
-        inst.volumeSeries.setData(bars.map(b => ({
-            time: parseTime(b.date),
-            value: b.volume || 0,
-            color: b.close >= b.open ? '#4ae68a44' : '#e64a6a44',
-        })).filter(c => c.time > 0))
-    }
+            inst.candle.setData(candles)
+            inst.vol.setData(bars.map(b => ({
+                time: parseTime(b.date),
+                value: b.volume || 0,
+                color: b.close >= b.open ? '#4ae68a44' : '#e64a6a44',
+            })).filter(c => c.time > 0))
+        }
 
-    function updateSegments(symbol, data) {
-        const el = document.getElementById('segs-' + symbol)
-        if (!el) return
         const all = [...(data.leaves || []), ...(data.branches || [])]
-        el.innerHTML = all.map(s => {
+        document.getElementById('segs-' + interval).innerHTML = all.map(s => {
             const cls = s.kind.startsWith('Yang') ? 'yang' : 'yin'
-            const label = s.kind.replace('Leaf', 'L').replace('Branch', 'B')
-            return `<span class="seg ${cls}">${label} [${s.startIdx}..${s.endIdx}]</span>`
+            const l = s.kind.replace('Leaf', 'L').replace('Branch', 'B')
+            return `<span class="seg ${cls}">${l} [${s.startIdx}..${s.endIdx}]</span>`
         }).join('')
     }
 
-    // SSE with auto-reconnect
-    function connect() {
-        const status = document.getElementById('status')
-        const es = new EventSource('/stream')
-
-        es.onopen = () => { status.textContent = 'connected'; status.className = 'ok'; log('SSE connected') }
-        es.onerror = () => { status.textContent = 'reconnecting...'; status.className = 'err' }
-
-        es.onmessage = (e) => {
-            try {
-                const data = JSON.parse(e.data)
-                const sym = data.symbol || '—'
-                if (data.bars || data.chartBars) updateChart(sym, data)
-                if (data.leaves || data.branches) updateSegments(sym, data)
-                log(`${sym}: ${(data.leaves||[]).length}L ${(data.branches||[]).length}B`)
-            } catch (err) { log('error: ' + err.message) }
-        }
+    // SSE
+    const status = document.getElementById('status')
+    const es = new EventSource('/stream')
+    es.onopen = () => { status.textContent = 'connected'; status.className = 'ok' }
+    es.onerror = () => { status.textContent = 'reconnecting...'; status.className = 'err' }
+    es.onmessage = (e) => {
+        try { update(JSON.parse(e.data)) }
+        catch (err) { log('error: ' + err.message) }
     }
-
-    connect()
     </script>
 </body>
 </html>
