@@ -7,80 +7,99 @@ import Idib.Fractal.Types
 %default total
 
 -- =========================================================================
--- finalizeBranch: emit a BranchSeg from accumulated leaf segments
--- recognIdx = endIdx of the first leaf in the group (recognition point)
+-- Helpers
 -- =========================================================================
 
-covering
-finalizeBranch : SegmentKind -> Nat -> Nat -> Nat -> List Segment -> Segment
-finalizeBranch sk startIdx recognIdx endIdx acc =
-  BranchSeg (MkFractal sk startIdx endIdx) recognIdx True
+barAt : List LeafBar -> Nat -> Double
+barAt [] _ = 0.0
+barAt (b :: bs) 0 = lbValue b
+barAt (_ :: bs) (S k) = barAt bs k
+
+leafEndVal : List LeafBar -> Segment -> Double
+leafEndVal bars leaf = barAt bars (segEndIdx leaf)
 
 -- =========================================================================
--- extendBranchAcc: accumulate consecutive same-kind leaves into a branch
--- When an opposite-kind leaf appears, finalize and return remainder.
--- recognIdx = endIdx of the first leaf (that's when we know it's a branch)
+-- detectBranch: detect branch-level segments from leaf segments
+--
+-- Yang Branch: leaf end breaks above previous peak
+--   startIdx  = previous trough leaf's end
+--   recognIdx = breakout leaf's end
+--   endIdx    = next trough leaf's end
+--
+-- Yin Branch: leaf end breaks below previous trough
+--   startIdx  = previous peak leaf's end
+--   recognIdx = breakout leaf's end
+--   endIdx    = next peak leaf's end
 -- =========================================================================
 
-covering
-extendBranchAcc : SegmentKind -> Nat -> List Segment -> List Segment
-               -> (Segment, List Segment)
-extendBranchAcc sk startIdx acc [] =
-  (finalizeBranch sk startIdx startIdx (lastEndIdx acc) acc, [])
-  where
-    lastEndIdx : List Segment -> Nat
-    lastEndIdx [] = startIdx
-    lastEndIdx (s :: ss) = lastEndIdx' s ss
-      where
-        lastEndIdx' : Segment -> List Segment -> Nat
-        lastEndIdx' x [] = segEndIdx x
-        lastEndIdx' _ (x' :: xs) = lastEndIdx' x' xs
-extendBranchAcc sk startIdx acc (s :: ss) =
-  if segKind s == sk then
-    extendBranchAcc sk startIdx (acc ++ [s]) ss
-  else
-    (finalizeBranch sk startIdx startIdx (lastEndIdx acc) acc, s :: ss)
-  where
-    lastEndIdx : List Segment -> Nat
-    lastEndIdx [] = startIdx
-    lastEndIdx (x :: xs) = lastEndIdx' x xs
-      where
-        lastEndIdx' : Segment -> List Segment -> Nat
-        lastEndIdx' x [] = segEndIdx x
-        lastEndIdx' _ (x' :: xs) = lastEndIdx' x' xs
+mutual
+  covering
+  lookYang : List LeafBar -> Nat -> Double -> Double -> Nat -> Nat
+          -> List Segment -> List Segment -> List Segment
+  lookYang bars idx prevPeak prevTrough peakIdx troughIdx acc [] = reverse acc
+  lookYang bars idx prevPeak prevTrough peakIdx troughIdx acc (leaf :: leaves) =
+    let val = leafEndVal bars leaf
+        leafIdx = segEndIdx leaf
+    in if idx == 0 then
+      lookYang bars 1 val val leafIdx leafIdx acc leaves
+    else if val > prevPeak then
+      endYang bars (idx + 1) prevPeak prevTrough val peakIdx troughIdx leafIdx acc leaves
+    else
+      lookYang bars (idx + 1) (max prevPeak val) val peakIdx troughIdx acc leaves
 
--- =========================================================================
--- detectBranch: group leaf segments into branch-level segments
--- No confirmationBars — algorithm determines recognition from data.
--- A branch is recognized when consecutive same-kind leaves form a group.
--- =========================================================================
+  covering
+  endYang : List LeafBar -> Nat -> Double -> Double -> Double -> Nat -> Nat
+         -> Nat -> List Segment -> List Segment -> List Segment
+  endYang bars idx peak trough prevTrough peakIdx troughIdx recognIdx acc [] = reverse acc
+  endYang bars idx peak trough prevTrough peakIdx troughIdx recognIdx acc (leaf :: leaves) =
+    let val = leafEndVal bars leaf
+        leafIdx = segEndIdx leaf
+    in if val < prevTrough then
+      let startIdx = troughIdx
+          branch = BranchSeg (MkFractal Rising startIdx leafIdx) recognIdx True
+      in lookYin bars (idx + 1) val val leafIdx leafIdx (branch :: acc) leaves
+    else
+      endYang bars (idx + 1) (max peak val) (min trough val) prevTrough
+        peakIdx troughIdx recognIdx acc leaves
 
-covering
+  covering
+  lookYin : List LeafBar -> Nat -> Double -> Double -> Nat -> Nat
+         -> List Segment -> List Segment -> List Segment
+  lookYin bars idx prevPeak prevTrough peakIdx troughIdx acc [] = reverse acc
+  lookYin bars idx prevPeak prevTrough peakIdx troughIdx acc (leaf :: leaves) =
+    let val = leafEndVal bars leaf
+        leafIdx = segEndIdx leaf
+    in if val < prevTrough then
+      endYin bars (idx + 1) prevPeak prevTrough val peakIdx troughIdx leafIdx acc leaves
+    else
+      lookYin bars (idx + 1) val (min prevTrough val) peakIdx troughIdx acc leaves
+
+  covering
+  endYin : List LeafBar -> Nat -> Double -> Double -> Double -> Nat -> Nat
+        -> Nat -> List Segment -> List Segment -> List Segment
+  endYin bars idx peak trough prevPeak peakIdx troughIdx recognIdx acc [] = reverse acc
+  endYin bars idx peak trough prevPeak peakIdx troughIdx recognIdx acc (leaf :: leaves) =
+    let val = leafEndVal bars leaf
+        leafIdx = segEndIdx leaf
+    in if val > prevPeak then
+      let startIdx = peakIdx
+          branch = BranchSeg (MkFractal Falling startIdx leafIdx) recognIdx True
+      in lookYang bars (idx + 1) val val leafIdx leafIdx (branch :: acc) leaves
+    else
+      endYin bars (idx + 1) (max peak val) (min trough val) prevPeak
+        peakIdx troughIdx recognIdx acc leaves
+
 public export
-detectBranch : BranchConfig -> List Segment -> List Segment
-detectBranch config [] = []
-detectBranch config segs = go segs
+covering
+detectBranch : BranchConfig -> List LeafBar -> List Segment -> List Segment
+detectBranch config bars [] = []
+detectBranch config bars leaves = lookYang bars 0 0.0 0.0 0 0 [] leaves
 
-  where
-    go : List Segment -> List Segment
-    go [] = []
-    go (s :: ss) =
-      let sk = segKind s
-          startIdx = segStartIdx s
-          (branch, remaining) = extendBranchAcc sk startIdx [s] ss
-      in branch :: go remaining
-
--- =========================================================================
--- backCountSegment: count bars from segment start to end
 -- =========================================================================
 
 public export
 backCountSegment : Segment -> Nat
 backCountSegment s = segBarsCount s
-
--- =========================================================================
--- isSegmentConfirmed: check if branch is confirmed
--- =========================================================================
 
 public export
 isSegmentConfirmed : Segment -> Bool

@@ -45,7 +45,7 @@ record Fractal where
 
 -- =========================================================================
 -- Segment: the recursive ADT
---   LeafSeg   — leaf-level extremum segment (no recognition delay)
+--   LeafSeg   — leaf-level extremum segment
 --   BranchSeg — higher-level segment with recognIdx
 -- =========================================================================
 
@@ -53,7 +53,7 @@ public export
 data Segment : Type where
   LeafSeg   : Fractal -> Segment
   BranchSeg : Fractal -> Nat -> Bool -> Segment
-  --                     ^recognIdx
+  --                     ^recognIdx  ^confirmed
 
 -- =========================================================================
 -- Segment accessors
@@ -90,7 +90,7 @@ isBranch (BranchSeg _ _ _)   = True
 
 public export
 segRecognIdx : Segment -> Nat
-segRecognIdx (LeafSeg f)         = fStartIdx f  -- leaves: same as start
+segRecognIdx (LeafSeg f)         = fStartIdx f
 segRecognIdx (BranchSeg _ r _)   = r
 
 public export
