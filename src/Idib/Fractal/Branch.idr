@@ -18,18 +18,22 @@ barAt (_ :: bs) (S k) = barAt bs k
 leafEndVal : List LeafBar -> Segment -> Double
 leafEndVal bars leaf = barAt bars (segEndIdx leaf)
 
+isYangLeaf : Segment -> Bool
+isYangLeaf (YangLeaf _) = True
+isYangLeaf _ = False
+
 -- =========================================================================
 -- detectBranch: detect branch-level segments from leaf segments
 --
--- Yang Branch: leaf end breaks above previous peak
---   startIdx  = previous trough leaf's end
---   recognIdx = breakout leaf's end
---   endIdx    = next trough leaf's end
+-- Yang Branch: YinLeaf end breaks above previous peak
+--   startIdx  = previous YangLeaf end
+--   recognIdx = breakout YinLeaf end
+--   endIdx    = next YinLeaf end
 --
--- Yin Branch: leaf end breaks below previous trough
---   startIdx  = previous peak leaf's end
---   recognIdx = breakout leaf's end
---   endIdx    = next peak leaf's end
+-- Yin Branch: YangLeaf end breaks below previous trough
+--   startIdx  = previous YinLeaf end
+--   recognIdx = breakout YangLeaf end
+--   endIdx    = next YangLeaf end
 -- =========================================================================
 
 mutual
@@ -41,8 +45,10 @@ mutual
     let val = leafEndVal bars leaf
         leafIdx = segEndIdx leaf
     in if idx == 0 then
+      -- First leaf: initialize tracking
       lookYang bars 1 val val leafIdx leafIdx acc leaves
     else if val > prevPeak then
+      -- Yang breakout! Look for end
       endYang bars (idx + 1) prevPeak prevTrough val peakIdx troughIdx leafIdx acc leaves
     else
       lookYang bars (idx + 1) (max prevPeak val) val peakIdx troughIdx acc leaves
@@ -55,8 +61,9 @@ mutual
     let val = leafEndVal bars leaf
         leafIdx = segEndIdx leaf
     in if val < prevTrough then
+      -- End! Emit Yang branch, switch to Yin search
       let startIdx = troughIdx
-          branch = BranchSeg (MkFractal Rising startIdx leafIdx) recognIdx True
+          branch = YangBranch (MkFractal startIdx leafIdx) recognIdx
       in lookYin bars (idx + 1) val val leafIdx leafIdx (branch :: acc) leaves
     else
       endYang bars (idx + 1) (max peak val) (min trough val) prevTrough
@@ -70,6 +77,7 @@ mutual
     let val = leafEndVal bars leaf
         leafIdx = segEndIdx leaf
     in if val < prevTrough then
+      -- Yin breakout! Look for end
       endYin bars (idx + 1) prevPeak prevTrough val peakIdx troughIdx leafIdx acc leaves
     else
       lookYin bars (idx + 1) val (min prevTrough val) peakIdx troughIdx acc leaves
@@ -82,8 +90,9 @@ mutual
     let val = leafEndVal bars leaf
         leafIdx = segEndIdx leaf
     in if val > prevPeak then
+      -- End! Emit Yin branch, switch to Yang search
       let startIdx = peakIdx
-          branch = BranchSeg (MkFractal Falling startIdx leafIdx) recognIdx True
+          branch = YinBranch (MkFractal startIdx leafIdx) recognIdx
       in lookYang bars (idx + 1) val val leafIdx leafIdx (branch :: acc) leaves
     else
       endYin bars (idx + 1) (max peak val) (min trough val) prevPeak
@@ -100,7 +109,3 @@ detectBranch config bars leaves = lookYang bars 0 0.0 0.0 0 0 [] leaves
 public export
 backCountSegment : Segment -> Nat
 backCountSegment s = segBarsCount s
-
-public export
-isSegmentConfirmed : Segment -> Bool
-isSegmentConfirmed = segConfirmed

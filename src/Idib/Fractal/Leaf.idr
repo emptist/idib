@@ -5,24 +5,6 @@ import Data.List
 %default total
 
 -- =========================================================================
--- SegmentKind: direction of a fractal segment
--- =========================================================================
-
-public export
-data SegmentKind = Rising | Falling
-
-public export
-Eq SegmentKind where
-  (==) Rising Rising = True
-  (==) Falling Falling = True
-  (==) _ _ = False
-
-public export
-opposite : SegmentKind -> SegmentKind
-opposite Rising = Falling
-opposite Falling = Rising
-
--- =========================================================================
 -- LeafBar: a single price point with index (source data element)
 -- =========================================================================
 
@@ -39,40 +21,39 @@ record LeafBar where
 public export
 record Fractal where
   constructor MkFractal
-  fKind     : SegmentKind
   fStartIdx : Nat
   fEndIdx   : Nat
 
 -- =========================================================================
--- Segment: the recursive ADT
---   LeafSeg   — leaf-level extremum segment
---   BranchSeg — higher-level segment with recognIdx
+-- Segment: four constructors, one per direction × level
+--   No direction variable — direction is structural in the type.
+--   Pattern matching tells you exactly what you have.
 -- =========================================================================
 
 public export
 data Segment : Type where
-  LeafSeg   : Fractal -> Segment
-  BranchSeg : Fractal -> Nat -> Bool -> Segment
-  --                     ^recognIdx  ^confirmed
+  YangLeaf   : Fractal -> Segment
+  YinLeaf    : Fractal -> Segment
+  YangBranch : Fractal -> Nat -> Segment  -- recognIdx
+  YinBranch  : Fractal -> Nat -> Segment  -- recognIdx
 
 -- =========================================================================
--- Segment accessors
+-- Segment accessors — pattern match, no equality check needed
 -- =========================================================================
-
-public export
-segKind : Segment -> SegmentKind
-segKind (LeafSeg f)         = fKind f
-segKind (BranchSeg f _ _)   = fKind f
 
 public export
 segStartIdx : Segment -> Nat
-segStartIdx (LeafSeg f)         = fStartIdx f
-segStartIdx (BranchSeg f _ _)   = fStartIdx f
+segStartIdx (YangLeaf f)       = fStartIdx f
+segStartIdx (YinLeaf f)        = fStartIdx f
+segStartIdx (YangBranch f _)   = fStartIdx f
+segStartIdx (YinBranch f _)    = fStartIdx f
 
 public export
 segEndIdx : Segment -> Nat
-segEndIdx (LeafSeg f)         = fEndIdx f
-segEndIdx (BranchSeg f _ _)   = fEndIdx f
+segEndIdx (YangLeaf f)       = fEndIdx f
+segEndIdx (YinLeaf f)        = fEndIdx f
+segEndIdx (YangBranch f _)   = fEndIdx f
+segEndIdx (YinBranch f _)    = fEndIdx f
 
 public export
 segBarsCount : Segment -> Nat
@@ -80,23 +61,24 @@ segBarsCount s = minus (segEndIdx s) (segStartIdx s)
 
 public export
 isLeaf : Segment -> Bool
-isLeaf (LeafSeg _)         = True
-isLeaf (BranchSeg _ _ _)   = False
+isLeaf (YangLeaf _)     = True
+isLeaf (YinLeaf _)      = True
+isLeaf (YangBranch _ _) = False
+isLeaf (YinBranch _ _)  = False
 
 public export
 isBranch : Segment -> Bool
-isBranch (LeafSeg _)         = False
-isBranch (BranchSeg _ _ _)   = True
+isBranch (YangLeaf _)     = False
+isBranch (YinLeaf _)      = False
+isBranch (YangBranch _ _) = True
+isBranch (YinBranch _ _)  = True
 
 public export
 segRecognIdx : Segment -> Nat
-segRecognIdx (LeafSeg f)         = fStartIdx f
-segRecognIdx (BranchSeg _ r _)   = r
-
-public export
-segConfirmed : Segment -> Bool
-segConfirmed (LeafSeg _)         = False
-segConfirmed (BranchSeg _ _ c)   = c
+segRecognIdx (YangLeaf f)       = fStartIdx f  -- leaves: no delay
+segRecognIdx (YinLeaf f)        = fStartIdx f
+segRecognIdx (YangBranch _ r)   = r
+segRecognIdx (YinBranch _ r)    = r
 
 -- =========================================================================
 -- slice: extract sub-list by index range
@@ -107,7 +89,7 @@ slice : List a -> Nat -> Nat -> List a
 slice xs start end = take (minus end start) (drop start xs)
 
 -- =========================================================================
--- Value helpers: look up bar value from source bars by index
+-- Value helpers
 -- =========================================================================
 
 barAt : List LeafBar -> Nat -> Double

@@ -6,7 +6,7 @@ import Idib.Fractal.Leaf
 %default total
 
 -- =========================================================================
--- atIdx: safe index into a list, returns default for out-of-bounds
+-- Helpers
 -- =========================================================================
 
 atIdx : List LeafBar -> Nat -> LeafBar
@@ -18,8 +18,8 @@ atIdx (_ :: xs) (S k) = atIdx xs k
 -- detectLeaf: detect leaf-level segments from source bars
 --
 -- Uses running peak/trough logic (matches glib).
--- Returns List Segment — all LeafSeg with index ranges into source bars.
--- No bar data stored in segments. Source bars remain the single truth.
+-- Returns List Segment — all YangLeaf/YinLeaf with index ranges.
+-- Source bars remain the single truth.
 -- =========================================================================
 
 covering
@@ -41,10 +41,10 @@ detectLeaf bars = go 0 0 (lbValue (head bars)) 0 bars
           let currentIdx = count
               currentVal = lbValue b
           in if currentVal > extremumVal then
-            let leaf = LeafSeg (MkFractal Rising startIdx currentIdx)
+            let leaf = YangLeaf (MkFractal startIdx currentIdx)
             in leaf :: go currentIdx currentIdx currentVal (count + 1) bs
           else if currentVal < lbValue (atIdx bars startIdx) then
-            let leaf = LeafSeg (MkFractal Falling startIdx currentIdx)
+            let leaf = YinLeaf (MkFractal startIdx currentIdx)
             in leaf :: go currentIdx currentIdx currentVal (count + 1) bs
           else
             let (newExtremumIdx, newExtremumVal) =

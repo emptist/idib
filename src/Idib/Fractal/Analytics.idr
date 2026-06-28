@@ -14,8 +14,8 @@ public export
 record SegmentMetrics where
   constructor MkSegmentMetrics
   totalSegments   : Nat
-  risingSegments  : Nat
-  fallingSegments : Nat
+  yangSegments    : Nat
+  yinSegments     : Nat
   avgSegLength    : Double
   avgSegReturn    : Double
   maxSegLength    : Nat
@@ -34,6 +34,15 @@ barAt (b :: bs) 0 = lbValue b
 barAt (_ :: bs) (S k) = barAt bs k
 
 -- =========================================================================
+-- isYang: pattern match instead of equality check
+-- =========================================================================
+
+isYang : Segment -> Bool
+isYang (YangLeaf _)     = True
+isYang (YangBranch _ _) = True
+isYang _                = False
+
+-- =========================================================================
 -- computeSegmentMetrics: metrics from segments + source bars
 -- =========================================================================
 
@@ -43,10 +52,10 @@ computeSegmentMetrics _ [] = MkSegmentMetrics 0 0 0 0.0 0.0 0 0
 computeSegmentMetrics bars segs =
   let totalN : Nat
       totalN = length segs
-      rising : Nat
-      rising = count (\s => segKind s == Rising) segs
-      falling : Nat
-      falling = count (\s => segKind s == Falling) segs
+      yangN : Nat
+      yangN = count isYang segs
+      yinN : Nat
+      yinN = count (\s => not (isYang s)) segs
       lengths : List Nat
       lengths = map segBarsCount segs
       returns : List Double
@@ -63,43 +72,33 @@ computeSegmentMetrics bars segs =
       maxLen = foldr max 0 lengths
       minLen : Nat
       minLen = foldr min 0 lengths
-  in MkSegmentMetrics totalN rising falling avgLen avgRet maxLen minLen
+  in MkSegmentMetrics totalN yangN yinN avgLen avgRet maxLen minLen
 
 -- =========================================================================
--- maxDrawdown: max drop within a segment from source bars
+-- maxDrawdown: max drop within a segment
 -- =========================================================================
 
 public export
 maxDrawdown : List LeafBar -> Segment -> Double
 maxDrawdown bars seg =
-  let segmentBars : List LeafBar
-      segmentBars = slice bars (segStartIdx seg) (segEndIdx seg)
-      endVal : Double
+  let segmentBars = slice bars (segStartIdx seg) (segEndIdx seg)
       endVal = barAt bars (segEndIdx seg)
-      drops : List Double
       drops = map (\b => lbValue b - endVal) segmentBars
   in foldr max 0.0 drops
 
 -- =========================================================================
--- volatility: price volatility within a segment from source bars
+-- volatility: price volatility within a segment
 -- =========================================================================
 
 public export
 volatility : List LeafBar -> Segment -> Double
 volatility bars seg =
-  let segmentBars : List LeafBar
-      segmentBars = slice bars (segStartIdx seg) (segEndIdx seg)
-      vals : List Double
+  let segmentBars = slice bars (segStartIdx seg) (segEndIdx seg)
       vals = map lbValue segmentBars
-      n : Nat
       n = length vals
-      sum : Double
       sum = foldr (+) 0.0 vals
-      meanVal : Double
       meanVal = if n > 0 then sum / natToDouble n else 0.0
-      variance : Double
       variance = foldr (\x, acc => acc + (x - meanVal) * (x - meanVal)) 0.0 vals
-      varianceNorm : Double
       varianceNorm = if n > 0 then variance / natToDouble n else 0.0
   in sqrt varianceNorm
 
@@ -113,11 +112,8 @@ data SegmentPattern = Steep | Gradual | Choppy | Flat
 public export
 classifySegmentPattern : List LeafBar -> Segment -> SegmentPattern
 classifySegmentPattern bars seg =
-  let density : Nat
-      density = length (slice bars (segStartIdx seg) (segEndIdx seg))
-      ret : Double
+  let density = length (slice bars (segStartIdx seg) (segEndIdx seg))
       ret = abs (barAt bars (segEndIdx seg) - barAt bars (segStartIdx seg))
-      len : Double
       len = natToDouble (segBarsCount seg)
   in if len == 0 then Flat
      else if density < 3 then Steep
@@ -134,10 +130,10 @@ summarizeSegments _ [] = "No segments detected"
 summarizeSegments bars segs =
   let metrics = computeSegmentMetrics bars segs
       totalN = totalSegments metrics
-      risingPct = if totalN > 0
-                  then natToDouble (risingSegments metrics) / natToDouble totalN * 100
-                  else 0.0
+      yangPct = if totalN > 0
+                then natToDouble (yangSegments metrics) / natToDouble totalN * 100
+                else 0.0
   in "Segments: " ++ show totalN
-     ++ " (Rising: " ++ show risingPct ++ "%)"
+     ++ " (Yang: " ++ show yangPct ++ "%)"
      ++ " | Avg Length: " ++ show (avgSegLength metrics)
      ++ " | Avg Return: " ++ show (avgSegReturn metrics)
