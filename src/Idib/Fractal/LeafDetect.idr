@@ -6,47 +6,49 @@ import Idib.Fractal.Leaf
 %default total
 
 -- =========================================================================
--- Helpers
+-- atIdx: safe index into a list, returns default for out-of-bounds
 -- =========================================================================
 
-lastWithDefault : List a -> a -> a
-lastWithDefault [] fallback = fallback
-lastWithDefault (x :: xs) fallback = lastWithDefault xs x
-
-safeTail : List a -> List a
-safeTail [] = []
-safeTail (_ :: xs) = xs
+atIdx : List LeafBar -> Nat -> LeafBar
+atIdx [] _ = MkLeafBar 0 0.0
+atIdx (x :: _) 0 = x
+atIdx (_ :: xs) (S k) = atIdx xs k
 
 -- =========================================================================
--- Detects leaf-level segments using running peak/trough.
--- Matches glib's running peak/trough logic.
+-- detectLeaf: detect leaf-level segments from source bars
 --
--- Algorithm:
---   Track current segment start and extremum.
---   When a bar exceeds the extremum → finalize current leaf, start new one.
---   Always starts with a Rising (Yang) leaf — first bar is a trough.
---
--- Returns: List Segment (all LeafSeg)
+-- Uses running peak/trough logic (matches glib).
+-- Returns List Segment — all LeafSeg with index ranges into source bars.
+-- No bar data stored in segments. Source bars remain the single truth.
 -- =========================================================================
 
+covering
 public export
 detectLeaf : List LeafBar -> List Segment
 detectLeaf [] = []
-detectLeaf (x :: xs) = go x x 1 [x] xs
+detectLeaf bars = go 0 0 (lbValue (head bars)) 0 bars
   where
-    mkLeaf : SegmentKind -> LeafBar -> LeafBar -> List LeafBar -> Segment
-    mkLeaf sk s e inner = LeafSeg (MkFractal sk s e inner)
+    head : List LeafBar -> LeafBar
+    head [] = MkLeafBar 0 0.0
+    head (x :: _) = x
 
-    go : LeafBar -> LeafBar -> Nat -> List LeafBar -> List LeafBar -> List Segment
-    go startY currentMax count acc [] =
-      [mkLeaf Rising startY (lastWithDefault acc currentMax) (reverse (safeTail acc))]
-    go startY currentMax count acc (b :: rest) =
-      if lbValue b > lbValue currentMax then
-        let leaf = mkLeaf Rising startY (lastWithDefault acc currentMax) (reverse (safeTail acc))
-        in leaf :: go b b 1 [b] rest
-      else if lbValue b < lbValue startY then
-        let leaf = mkLeaf Falling startY (lastWithDefault acc currentMax) (reverse (safeTail acc))
-        in leaf :: go b b 1 [b] rest
-      else
-        let newMax = if lbValue b > lbValue currentMax then b else currentMax
-        in go startY newMax (count + 1) (b :: acc) rest
+    go : Nat -> Nat -> Double -> Nat -> List LeafBar -> List Segment
+    go _ _ _ _ [] = []
+    go startIdx extremumIdx extremumVal count bars =
+      case bars of
+        [] => []
+        (b :: bs) =>
+          let currentIdx = count
+              currentVal = lbValue b
+          in if currentVal > extremumVal then
+            let leaf = LeafSeg (MkFractal Rising startIdx 0 currentIdx)
+            in leaf :: go currentIdx currentIdx currentVal (count + 1) bs
+          else if currentVal < lbValue (atIdx bars startIdx) then
+            let leaf = LeafSeg (MkFractal Falling startIdx 0 currentIdx)
+            in leaf :: go currentIdx currentIdx currentVal (count + 1) bs
+          else
+            let (newExtremumIdx, newExtremumVal) =
+                  if currentVal > extremumVal
+                    then (currentIdx, currentVal)
+                    else (extremumIdx, extremumVal)
+            in go startIdx newExtremumIdx newExtremumVal (count + 1) bs

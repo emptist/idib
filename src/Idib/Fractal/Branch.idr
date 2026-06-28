@@ -7,55 +7,49 @@ import Idib.Fractal.Types
 %default total
 
 -- =========================================================================
--- finalizeBranch: create a BranchSeg from accumulated leaf segments
+-- finalizeBranch: emit a BranchSeg from accumulated leaf segments
+-- recognIdx = startIdx + confirmationBars (where we confirmed it)
 -- =========================================================================
 
 covering
-finalizeBranch : SegmentKind -> LeafBar -> LeafBar -> List Segment -> Segment
-finalizeBranch sk start end acc =
-  BranchSeg (MkFractal sk start end []) acc True
+finalizeBranch : Nat -> SegmentKind -> Nat -> Nat -> List Segment -> Segment
+finalizeBranch confirmBars sk startIdx endIdx acc =
+  BranchSeg (MkFractal sk startIdx (startIdx + confirmBars) endIdx) True
 
 -- =========================================================================
--- extendBranchAcc: accumulate consecutive same-kind leaf segments
--- into one BranchSeg. When a leaf of opposite kind appears, stop.
--- Terminating: each step consumes one element from the tail.
+-- extendBranchAcc: accumulate consecutive same-kind leaves into a branch
+-- When an opposite-kind leaf appears, finalize and return remainder.
 -- =========================================================================
 
 covering
-extendBranchAcc : SegmentKind -> LeafBar -> List Segment -> List Segment
+extendBranchAcc : Nat -> SegmentKind -> Nat -> List Segment -> List Segment
                -> (Segment, List Segment)
-extendBranchAcc sk start acc [] =
-  (finalizeBranch sk start (segEnd (lastSeg acc)) acc, [])
+extendBranchAcc confirmBars sk startIdx acc [] =
+  (finalizeBranch confirmBars sk startIdx (lastEndIdx acc) acc, [])
   where
-    lastSeg : List Segment -> Segment
-    lastSeg [] = LeafSeg (MkFractal sk start start [])
-    lastSeg (s :: ss) = lastSeg' s ss
+    lastEndIdx : List Segment -> Nat
+    lastEndIdx [] = startIdx
+    lastEndIdx (s :: ss) = lastEndIdx' s ss
       where
-        lastSeg' : Segment -> List Segment -> Segment
-        lastSeg' x [] = x
-        lastSeg' _ (x' :: xs) = lastSeg' x' xs
-extendBranchAcc sk start acc (s :: ss) =
+        lastEndIdx' : Segment -> List Segment -> Nat
+        lastEndIdx' x [] = segEndIdx x
+        lastEndIdx' _ (x' :: xs) = lastEndIdx' x' xs
+extendBranchAcc confirmBars sk startIdx acc (s :: ss) =
   if segKind s == sk then
-    extendBranchAcc sk start (acc ++ [s]) ss
+    extendBranchAcc confirmBars sk startIdx (acc ++ [s]) ss
   else
-    (finalizeBranch sk start (segEnd (lastSeg acc)) acc, s :: ss)
+    (finalizeBranch confirmBars sk startIdx (lastEndIdx acc) acc, s :: ss)
   where
-    lastSeg : List Segment -> Segment
-    lastSeg [] = LeafSeg (MkFractal sk start start [])
-    lastSeg (x :: xs) = lastSeg' x xs
+    lastEndIdx : List Segment -> Nat
+    lastEndIdx [] = startIdx
+    lastEndIdx (x :: xs) = lastEndIdx' x xs
       where
-        lastSeg' : Segment -> List Segment -> Segment
-        lastSeg' x [] = x
-        lastSeg' _ (x' :: xs) = lastSeg' x' xs
+        lastEndIdx' : Segment -> List Segment -> Nat
+        lastEndIdx' x [] = segEndIdx x
+        lastEndIdx' _ (x' :: xs) = lastEndIdx' x' xs
 
 -- =========================================================================
 -- detectBranch: group leaf segments into branch-level segments
---
--- Input:  List Segment (from detectLeaf — all LeafSeg)
--- Output: List Segment (BranchSeg wrapping groups of same-kind leaves)
---
--- Each BranchSeg contains its inner LeafSegs as children.
--- The recursive Segment type means branches can nest.
 -- =========================================================================
 
 covering
@@ -64,16 +58,16 @@ detectBranch : BranchConfig -> List Segment -> List Segment
 detectBranch config [] = []
 detectBranch config segs =
   let n = config.confirmationBars
-  in if n == 0 then [] else go segs
+  in if n == 0 then [] else go n segs
 
   where
-    go : List Segment -> List Segment
-    go [] = []
-    go (s :: ss) =
+    go : Nat -> List Segment -> List Segment
+    go _ [] = []
+    go n (s :: ss) =
       let sk = segKind s
-          startB = segStart s
-          (branch, remaining) = extendBranchAcc sk startB [s] ss
-      in branch :: go remaining
+          startIdx = segStartIdx s
+          (branch, remaining) = extendBranchAcc n sk startIdx [s] ss
+      in branch :: go n remaining
 
 -- =========================================================================
 -- backCountSegment: count bars from segment start to end

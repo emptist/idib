@@ -6,7 +6,6 @@ import Data.List
 
 -- =========================================================================
 -- SegmentKind: direction of a fractal segment
--- Replaces both LeafKind and BranchKind — one type for all levels
 -- =========================================================================
 
 public export
@@ -24,7 +23,7 @@ opposite Rising = Falling
 opposite Falling = Rising
 
 -- =========================================================================
--- LeafBar: a single price point with index
+-- LeafBar: a single price point with index (source data element)
 -- =========================================================================
 
 public export
@@ -34,126 +33,93 @@ record LeafBar where
   lbValue : Double
 
 -- =========================================================================
--- Fractal: the common record shared by all segment levels
--- In OOP this would be the abstract superclass of Branch and Leaf
+-- Fractal: index range into source bars — the superclass record
+-- No bar data stored. Source bars are the single truth.
 -- =========================================================================
 
 public export
 record Fractal where
   constructor MkFractal
-  fKind     : SegmentKind
-  fStart    : LeafBar
-  fEnd      : LeafBar
-  fInner    : List LeafBar
+  fKind      : SegmentKind
+  fStartIdx  : Nat
+  fRecognIdx : Nat  -- where we recognize this segment (0 for leaves)
+  fEndIdx    : Nat
 
 -- =========================================================================
--- Segment: the recursive ADT — two constructors, same base shape
---   LeafSeg    — leaf-level extremum segment
---   BranchSeg  — higher-level segment containing inner Segments
+-- Segment: the recursive ADT
+--   LeafSeg   — leaf-level extremum segment
+--   BranchSeg — higher-level segment grouping consecutive same-kind leaves
 -- =========================================================================
 
 public export
 data Segment : Type where
   LeafSeg   : Fractal -> Segment
-  BranchSeg : Fractal -> List Segment -> Bool -> Segment
+  BranchSeg : Fractal -> Bool -> Segment
 
 -- =========================================================================
--- Segment accessors: pattern-match to extract common fields
+-- Segment accessors
 -- =========================================================================
 
 public export
 segKind : Segment -> SegmentKind
 segKind (LeafSeg f)       = fKind f
-segKind (BranchSeg f _ _) = fKind f
-
-public export
-segStart : Segment -> LeafBar
-segStart (LeafSeg f)       = fStart f
-segStart (BranchSeg f _ _) = fStart f
-
-public export
-segEnd : Segment -> LeafBar
-segEnd (LeafSeg f)       = fEnd f
-segEnd (BranchSeg f _ _) = fEnd f
+segKind (BranchSeg f _)   = fKind f
 
 public export
 segStartIdx : Segment -> Nat
-segStartIdx s = lbIndex (segStart s)
+segStartIdx (LeafSeg f)       = fStartIdx f
+segStartIdx (BranchSeg f _)   = fStartIdx f
+
+public export
+segRecognIdx : Segment -> Nat
+segRecognIdx (LeafSeg f)       = fRecognIdx f
+segRecognIdx (BranchSeg f _)   = fRecognIdx f
 
 public export
 segEndIdx : Segment -> Nat
-segEndIdx s = lbIndex (segEnd s)
-
-public export
-segStartValue : Segment -> Double
-segStartValue s = lbValue (segStart s)
-
-public export
-segEndValue : Segment -> Double
-segEndValue s = lbValue (segEnd s)
+segEndIdx (LeafSeg f)       = fEndIdx f
+segEndIdx (BranchSeg f _)   = fEndIdx f
 
 public export
 segBarsCount : Segment -> Nat
 segBarsCount s = minus (segEndIdx s) (segStartIdx s)
 
--- =========================================================================
--- Leaf-specific helpers
--- =========================================================================
-
-public export
-segInnerBars : Segment -> List LeafBar
-segInnerBars (LeafSeg f)       = fInner f
-segInnerBars (BranchSeg f _ _) = fInner f
-
 public export
 isLeaf : Segment -> Bool
 isLeaf (LeafSeg _)       = True
-isLeaf (BranchSeg _ _ _) = False
+isLeaf (BranchSeg _ _)   = False
 
 public export
 isBranch : Segment -> Bool
 isBranch (LeafSeg _)       = False
-isBranch (BranchSeg _ _ _) = True
-
--- =========================================================================
--- Branch-specific helpers
--- =========================================================================
+isBranch (BranchSeg _ _)   = True
 
 public export
 segConfirmed : Segment -> Bool
-segConfirmed (LeafSeg _)         = False
-segConfirmed (BranchSeg _ _ c)   = c
-
-public export
-segInnerSegments : Segment -> List Segment
-segInnerSegments (LeafSeg _)         = []
-segInnerSegments (BranchSeg _ ss _)  = ss
+segConfirmed (LeafSeg _)       = False
+segConfirmed (BranchSeg _ c)   = c
 
 -- =========================================================================
--- isExtremal: check if a bar is an extremum within a list
--- Yang (Rising) = minimum, Yin (Falling) = maximum
+-- slice: extract sub-list by index range
 -- =========================================================================
 
 public export
-isExtremal : SegmentKind -> LeafBar -> List LeafBar -> Bool
-isExtremal Rising  s bars = all (\b => lbValue s <= lbValue b) bars
-isExtremal Falling s bars = all (\b => lbValue s >= lbValue b) bars
+slice : List a -> Nat -> Nat -> List a
+slice xs start end = take (minus end start) (drop start xs)
 
 -- =========================================================================
--- newSegmentTriggered: check if a new bar triggers a new segment
+-- Value helpers: look up bar value at segment start/end from source
 -- =========================================================================
 
-public export
-newSegmentTriggered : LeafBar -> Segment -> Bool
-newSegmentTriggered b s =
-  case segKind s of
-    Rising  => lbValue b > lbValue (segStart s)
-    Falling => lbValue b < lbValue (segStart s)
-
--- =========================================================================
--- leafValue: extract value from a LeafBar
--- =========================================================================
+barAt : List LeafBar -> Nat -> Double
+barAt [] _ = 0.0
+barAt (b :: bs) 0 = lbValue b
+barAt (_ :: bs) (S k) = barAt bs k
 
 public export
-leafValue : LeafBar -> Double
-leafValue = lbValue
+segStartValue : List LeafBar -> Segment -> Double
+segStartValue bars seg = barAt bars (segStartIdx seg)
+
+public export
+segEndValue : List LeafBar -> Segment -> Double
+segEndValue bars seg = barAt bars (segEndIdx seg)

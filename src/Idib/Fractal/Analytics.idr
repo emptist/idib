@@ -7,7 +7,7 @@ import Idib.Fractal.Branch
 %default total
 
 -- =========================================================================
--- SegmentMetrics: statistics of segments for AI pattern discovery
+-- SegmentMetrics: statistics for AI pattern discovery
 -- =========================================================================
 
 public export
@@ -22,20 +22,25 @@ record SegmentMetrics where
   minSegLength    : Nat
 
 -- =========================================================================
--- helper: cast Nat to Double
+-- helpers
 -- =========================================================================
 
 natToDouble : Nat -> Double
 natToDouble n = cast n
 
+barAt : List LeafBar -> Nat -> Double
+barAt [] _ = 0.0
+barAt (b :: bs) 0 = lbValue b
+barAt (_ :: bs) (S k) = barAt bs k
+
 -- =========================================================================
--- computeSegmentMetrics: compute metrics from a list of segments
+-- computeSegmentMetrics: metrics from segments + source bars
 -- =========================================================================
 
 public export
-computeSegmentMetrics : List Segment -> SegmentMetrics
-computeSegmentMetrics [] = MkSegmentMetrics 0 0 0 0.0 0.0 0 0
-computeSegmentMetrics segs =
+computeSegmentMetrics : List LeafBar -> List Segment -> SegmentMetrics
+computeSegmentMetrics _ [] = MkSegmentMetrics 0 0 0 0.0 0.0 0 0
+computeSegmentMetrics bars segs =
   let totalN : Nat
       totalN = length segs
       rising : Nat
@@ -45,7 +50,7 @@ computeSegmentMetrics segs =
       lengths : List Nat
       lengths = map segBarsCount segs
       returns : List Double
-      returns = map (\s => segEndValue s - segStartValue s) segs
+      returns = map (\s => barAt bars (segEndIdx s) - barAt bars (segStartIdx s)) segs
       totalLen : Nat
       totalLen = foldr (+) 0 lengths
       totalRet : Double
@@ -61,40 +66,31 @@ computeSegmentMetrics segs =
   in MkSegmentMetrics totalN rising falling avgLen avgRet maxLen minLen
 
 -- =========================================================================
--- segmentCount: count all segments (recursive into branches)
--- =========================================================================
-
-covering
-public export
-segmentCount : List Segment -> Nat
-segmentCount segs = foldr (\s, acc => acc + 1 + segmentCount (segInnerSegments s)) 0 segs
-
--- =========================================================================
--- maxDrawdown: compute maximum drawdown within a segment
+-- maxDrawdown: max drop within a segment from source bars
 -- =========================================================================
 
 public export
-maxDrawdown : Segment -> Double
-maxDrawdown seg =
-  let bars : List LeafBar
-      bars = segInnerBars seg
+maxDrawdown : List LeafBar -> Segment -> Double
+maxDrawdown bars seg =
+  let segmentBars : List LeafBar
+      segmentBars = slice bars (segStartIdx seg) (segEndIdx seg)
       endVal : Double
-      endVal = segEndValue seg
+      endVal = barAt bars (segEndIdx seg)
       drops : List Double
-      drops = map (\b => lbValue b - endVal) bars
+      drops = map (\b => lbValue b - endVal) segmentBars
   in foldr max 0.0 drops
 
 -- =========================================================================
--- volatility: compute price volatility within a segment
+-- volatility: price volatility within a segment from source bars
 -- =========================================================================
 
 public export
-volatility : Segment -> Double
-volatility seg =
-  let bars : List LeafBar
-      bars = segInnerBars seg
+volatility : List LeafBar -> Segment -> Double
+volatility bars seg =
+  let segmentBars : List LeafBar
+      segmentBars = slice bars (segStartIdx seg) (segEndIdx seg)
       vals : List Double
-      vals = map lbValue bars
+      vals = map lbValue segmentBars
       n : Nat
       n = length vals
       sum : Double
@@ -108,19 +104,19 @@ volatility seg =
   in sqrt varianceNorm
 
 -- =========================================================================
--- SegmentPattern: classify segment pattern for AI analysis
+-- SegmentPattern: classify for AI analysis
 -- =========================================================================
 
 public export
 data SegmentPattern = Steep | Gradual | Choppy | Flat
 
 public export
-classifySegmentPattern : Segment -> SegmentPattern
-classifySegmentPattern seg =
+classifySegmentPattern : List LeafBar -> Segment -> SegmentPattern
+classifySegmentPattern bars seg =
   let density : Nat
-      density = length (segInnerBars seg)
+      density = length (slice bars (segStartIdx seg) (segEndIdx seg))
       ret : Double
-      ret = abs (segEndValue seg - segStartValue seg)
+      ret = abs (barAt bars (segEndIdx seg) - barAt bars (segStartIdx seg))
       len : Double
       len = natToDouble (segBarsCount seg)
   in if len == 0 then Flat
@@ -129,14 +125,14 @@ classifySegmentPattern seg =
      else Gradual
 
 -- =========================================================================
--- summarizeSegments: generate human-readable summary
+-- summarizeSegments: human-readable summary
 -- =========================================================================
 
 public export
-summarizeSegments : List Segment -> String
-summarizeSegments [] = "No segments detected"
-summarizeSegments segs =
-  let metrics = computeSegmentMetrics segs
+summarizeSegments : List LeafBar -> List Segment -> String
+summarizeSegments _ [] = "No segments detected"
+summarizeSegments bars segs =
+  let metrics = computeSegmentMetrics bars segs
       totalN = totalSegments metrics
       risingPct = if totalN > 0
                   then natToDouble (risingSegments metrics) / natToDouble totalN * 100
