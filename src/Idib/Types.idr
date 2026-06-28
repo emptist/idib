@@ -131,21 +131,8 @@ barsPerMonth Min5   = 0
 barsPerMonth Min1   = 0
 
 -- =========================================================================
--- Result types: full series output from indicator computation
+-- BBResult: Bollinger Bands series output
 -- =========================================================================
-
-public export
-record SmaResult (n : Nat) where
-  constructor MkSmaResult
-  sma7           : Double
-  prev_sma7      : Double
-  sma7_series    : Vect n Double
-  cmah7          : Double
-  cmal7          : Double
-  hlcmah7        : Double
-  cmah7_series   : Vect n Double
-  cmal7_series   : Vect n Double
-  hlcmah7_series : Vect n Double
 
 public export
 record BBResult (n : Nat) where
@@ -173,28 +160,40 @@ record KDJResult (n : Nat) where
 public export
 record Indicators where
   constructor MkIndicators
-  sma7       : Double
-  prev_sma7  : Double
-  bbm        : Double
-  prev_bbm   : Double
-  bbu        : Double
-  bbl        : Double
-  bb6u       : Double
-  bb4u       : Double
-  bb4l       : Double
-  bb6l       : Double
-  k          : Double
-  d          : Double
-  j          : Double
-  prev_j     : Double
-  m          : Double
-  cmah7      : Double
-  hlcmah7    : Double
-  smas_up    : Bool
-  cmas_up    : Bool
-  bars_k_on_d : Nat
-  bars_d_on_k : Nat
-  xlow       : Bool
-  hlrows     : Nat
-  hlhlrows   : Nat
-  bbuy       : Bool
+  sma7          : Double
+  prev_sma7     : Double
+  bbm           : Double
+  prev_bbm      : Double
+  bbu           : Double
+  bbl           : Double
+  bbp           : Double
+  bb6u          : Double
+  bb4u          : Double
+  bb4l          : Double
+  bb6l          : Double
+  k             : Double
+  d             : Double
+  j             : Double
+  m             : Double
+  prev_k        : Double
+  prev_j        : Double
+  hrows7        : Nat
+  lrows7        : Nat
+  hprd7         : Nat
+  lprd7         : Nat
+  cmah7         : Double
+  cmal7         : Double
+  prev_hlcmah7  : Double
+  hlhrows7      : Nat
+  cnst7         : Double
+  velo7         : Double
+  cnsvel7       : Double
+  bias          : Double
+  smas_up       : Bool
+  cmas_up       : Bool
+  bars_k_on_d   : Nat
+  bars_d_on_k   : Nat
+  xlow          : Bool
+  hlrows        : Nat
+  hlhlrows      : Nat
+  bbuy          : Bool

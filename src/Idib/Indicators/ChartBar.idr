@@ -95,7 +95,15 @@ public export
 computeIndicators : {i : Interval} -> Interval -> IndicatorConfig -> List (Bar i) -> Indicators
 computeIndicators interval config bars =
   case bars of
-    [] => MkIndicators 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 False False 0 0 False 0 0 False
+    [] => MkIndicators
+      { sma7 = 0, prev_sma7 = 0, bbm = 0, prev_bbm = 0, bbu = 0, bbl = 0, bbp = 0
+      , bb6u = 0, bb4u = 0, bb4l = 0, bb6l = 0, k = 0, d = 0, j = 0, m = 0
+      , prev_k = 0, prev_j = 0, hrows7 = 0, lrows7 = 0, hprd7 = 0, lprd7 = 0
+      , cmah7 = 0, cmal7 = 0, prev_hlcmah7 = 0, hlhrows7 = 0, cnst7 = 0
+      , velo7 = 0, cnsvel7 = 0, bias = 0, smas_up = False, cmas_up = False
+      , bars_k_on_d = 0, bars_d_on_k = 0, xlow = False, hlrows = 0, hlhlrows = 0
+      , bbuy = False
+      }
     (defBar :: _) =>
       let chartBars = computeChartBars interval config bars
           z = 0.0
@@ -154,6 +162,7 @@ computeIndicators interval config bars =
         , prev_bbm = prevChart.bbm
         , bbu = lastChart.bbu
         , bbl = lastChart.bbl
+        , bbp = 0.0
         , bb6u = lastChart.bb6u
         , bb4u = lastChart.bb4u
         , bb4l = lastChart.bb4l
@@ -161,10 +170,21 @@ computeIndicators interval config bars =
         , k = lastChart.k
         , d = lastChart.d
         , j = lastChart.j
-        , prev_j = prevJ
         , m = lastChart.m
+        , prev_k = 0.0
+        , prev_j = prevJ
+        , hrows7 = smaResult.hrows7
+        , lrows7 = smaResult.lrows7
+        , hprd7 = 0
+        , lprd7 = 0
         , cmah7 = lastChart.cmah7
-        , hlcmah7 = lastChart.hlcmah7
+        , cmal7 = lastChart.cmal7
+        , prev_hlcmah7 = 0.0
+        , hlhrows7 = smaResult.hlhrows7
+        , cnst7 = smaResult.cnst7
+        , velo7 = 0.0
+        , cnsvel7 = 0.0
+        , bias = 0.0
         , smas_up = smasUp
         , cmas_up = cmasUp
         , bars_k_on_d = bkod
