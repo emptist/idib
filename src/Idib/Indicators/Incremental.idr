@@ -2,57 +2,16 @@ module Idib.Indicators.Incremental
 
 import Idib.Types
 import Idib.Fractal.Leaf
+import Idib.Fractal.LeafDetect
+import Idib.Fractal.Branch
+import Idib.Fractal.Types
 import Idib.Strategy.Position
 import Data.List
 
 %default total
 
 -- =========================================================================
--- State: rolling windows + previous values — O(1) per bar
--- =========================================================================
-
-public export
-record IState where
-  constructor MkIState
-  sma7Sum     : Double
-  sma7Count   : Nat
-  sma7Window  : List Double
-  bbSum       : Double
-  bbSumSq     : Double
-  bbCount     : Nat
-  bbWindow    : List Double
-  prevSma7    : Double
-  prevBbm     : Double
-  prevBbu     : Double
-  prevBbl     : Double
-  prevK       : Double
-  prevD       : Double
-  prevJ       : Double
-  prevM       : Double
-  prevClose   : Double
-  prevLow     : Double
-  barsKOnD    : Nat
-  barsDOnK    : Nat
-  lowWindow   : List Double
-  highWindow  : List Double
-  prevLeafEnd : Integer
-  prevIsYang  : Bool
-
-public export
-initState : IState
-initState = MkIState
-  { sma7Sum = 0.0, sma7Count = 0, sma7Window = []
-  , bbSum = 0.0, bbSumSq = 0.0, bbCount = 0, bbWindow = []
-  , prevSma7 = 0.0, prevBbm = 0.0, prevBbu = 0.0, prevBbl = 0.0
-  , prevK = 50.0, prevD = 50.0, prevJ = 50.0, prevM = 50.0
-  , prevClose = 0.0, prevLow = 0.0
-  , barsKOnD = 0, barsDOnK = 0
-  , lowWindow = [], highWindow = []
-  , prevLeafEnd = -1, prevIsYang = False
-  }
-
--- =========================================================================
--- Helpers (defined before use)
+-- takeN / updateWindow
 -- =========================================================================
 
 takeN : Nat -> List a -> List a
@@ -63,42 +22,106 @@ takeN (S k) (x :: xs) = x :: takeN k xs
 updateWindow : Nat -> Double -> List Double -> List Double
 updateWindow maxSize val window = takeN maxSize (val :: window)
 
-findLeafAtBar : List Segment -> Integer -> Maybe Segment
-findLeafAtBar [] _ = Nothing
-findLeafAtBar (seg :: rest) idx =
-  let endI = cast (fEndIdx (segFractal seg))
-  in if endI == idx then Just seg else findLeafAtBar rest idx
-  where
-    segFractal : Segment -> Fractal
-    segFractal (YangLeaf f) = f
-    segFractal (YinLeaf f) = f
-    segFractal (YangBranch f _) = f
-    segFractal (YinBranch f _) = f
+-- =========================================================================
+-- IState: rolling state between bars — O(1) per bar
+-- =========================================================================
+
+public export
+record IState where
+  constructor MkIState
+  -- SMA7 sliding window
+  sma7Sum     : Double
+  sma7Count   : Nat
+  sma7Window  : List Double
+  -- BB sliding window
+  bbSum       : Double
+  bbSumSq     : Double
+  bbCount     : Nat
+  bbWindow    : List Double
+  -- Previous bar indicators
+  prevSma7    : Double
+  prevBbm     : Double
+  prevK       : Double
+  prevD       : Double
+  prevJ       : Double
+  prevM       : Double
+  prevLow     : Double
+  -- KDJ consecutive counts
+  barsKOnD    : Nat
+  barsDOnK    : Nat
+  -- Rolling windows for KDJ RSV
+  lowWindow   : List Double
+  highWindow  : List Double
+
+public export
+initState : IState
+initState = MkIState
+  { sma7Sum = 0.0, sma7Count = 0, sma7Window = []
+  , bbSum = 0.0, bbSumSq = 0.0, bbCount = 0, bbWindow = []
+  , prevSma7 = 0.0, prevBbm = 0.0
+  , prevK = 50.0, prevD = 50.0, prevJ = 50.0, prevM = 50.0
+  , prevLow = 0.0
+  , barsKOnD = 0, barsDOnK = 0
+  , lowWindow = [], highWindow = []
+  }
 
 -- =========================================================================
--- stepBar: one bar → (IState, ChartBar) — O(1)
+-- ChartResult: indicators for one bar
+-- =========================================================================
+
+public export
+record ChartResult where
+  constructor MkChartResult
+  sma7     : Double
+  bbm      : Double
+  bbu      : Double
+  bbl      : Double
+  bb6u     : Double
+  bb4u     : Double
+  bb4l     : Double
+  bb6l     : Double
+  k        : Double
+  d        : Double
+  j        : Double
+  m        : Double
+
+-- =========================================================================
+-- stepBar: one bar → (IState, ChartResult) — O(1)
 -- =========================================================================
 
 public export
 covering
-stepBar : IState -> List Segment -> (bar : Bar i) -> Integer -> (IState, ChartBar i)
-stepBar st leaves bar barIdx =
+stepBar : IState -> (bar : Bar i) -> (IState, ChartResult)
+stepBar st bar =
   let c = close bar
       h = high bar
       lo = low bar
 
-      -- SMA7
-      newSma7Sum = st.sma7Sum + c
-      newSma7Count = st.sma7Count + 1
+      -- SMA7: sliding window sum of last 7 closes
+      oldSma7N = st.sma7Count
+      newSma7N = oldSma7N + 1
+      sma7Drop = if oldSma7N >= 7
+        then case reverse st.sma7Window of
+          [] => 0.0
+          (oldest :: _) => oldest
+        else 0.0
+      newSma7Sum = st.sma7Sum + c - sma7Drop
       newSma7Window = updateWindow 7 c st.sma7Window
-      sma7Val = newSma7Sum / cast (min newSma7Count 7)
+      sma7N = min newSma7N 7
+      sma7Val = newSma7Sum / cast sma7N
 
-      -- BB (SMA20 + std)
-      newBbSum = st.bbSum + c
-      newBbSumSq = st.bbSumSq + c * c
-      newBbCount = st.bbCount + 1
+      -- BB: sliding window sum of last 20 closes
+      oldBbN = st.bbCount
+      newBbN = oldBbN + 1
+      bbDrop = if oldBbN >= 20
+        then case reverse st.bbWindow of
+          [] => 0.0
+          (oldest :: _) => oldest
+        else 0.0
+      newBbSum = st.bbSum + c - bbDrop
+      newBbSumSq = st.bbSumSq + c * c - bbDrop * bbDrop
       newBbWindow = updateWindow 20 c st.bbWindow
-      bbN = min newBbCount 20
+      bbN = min newBbN 20
       bbmVal = newBbSum / cast bbN
       bbStd = if bbN >= 2
         then sqrt (abs ((newBbSumSq - newBbSum * newBbSum / cast bbN) / cast bbN))
@@ -113,7 +136,7 @@ stepBar st leaves bar barIdx =
       -- KDJ
       newLowWindow = updateWindow 7 lo st.lowWindow
       newHighWindow = updateWindow 7 h st.highWindow
-      period = min newSma7Count 7
+      period = min newSma7N 7
       rLow = foldl min 1.0e18 (takeN period newLowWindow)
       rHigh = foldl max 0.0 (takeN period newHighWindow)
       rsvRange = rHigh - rLow
@@ -127,87 +150,86 @@ stepBar st leaves bar barIdx =
       newBarsKOnD = if kVal > dVal then st.barsKOnD + 1 else 0
       newBarsDOnK = if dVal > kVal then st.barsDOnK + 1 else 0
 
-      -- xlow / shifted_xlow
-      prevLowest = case st.lowWindow of
-        [] => 1.0e18
-        ws => foldl min 1.0e18 ws
-      xlowVal = lo < prevLowest
-      shiftedXlow = case drop 1 st.lowWindow of
-        [] => False
-        ws => lo > foldl max 0.0 ws
-      newLowestLow = min lo prevLowest
-
-      -- smas_up
-      sma7Rising = sma7Val > st.prevSma7
-
-      -- Leaf lookup
-      leafAtBar = findLeafAtBar leaves barIdx
-      isYangLeaf = case leafAtBar of
-        Just (YangLeaf _) => True
-        _ => False
-      isYinLeaf = case leafAtBar of
-        Just (YinLeaf _) => True
-        _ => False
-
-      -- hprd7: bars since last yang leaf end
-      hprd7 : Integer
-      hprd7 = case leafAtBar of
-        Just (YangLeaf _) => 0
-        _ => if st.prevLeafEnd >= 0
-             then barIdx - st.prevLeafEnd
-             else cast newSma7Count
-
-      -- lprd7: bars since last yin leaf end
-      lprd7 : Integer
-      lprd7 = case leafAtBar of
-        Just (YinLeaf _) => 0
-        _ => if st.prevLeafEnd >= 0
-             then barIdx - st.prevLeafEnd
-             else cast newSma7Count
-
-      hlhrows7 = hprd7
-
-      -- Strategy signals
-      kdjRight = kVal > dVal && newBarsKOnD <= 3
-      bbuyVal = xlowVal && shiftedXlow && sma7Rising && kdjRight
-      buyVal = (sma7Rising && kdjRight) || bbuyVal
-      sellVal = (not sma7Rising) && (jVal < dVal) && (dVal < mVal) && (mVal > 65.0) && (newBarsDOnK < 3) && (st.prevLow < st.prevSma7)
-
-      chartBar = MkChartBar
-        { bar = bar, sma7 = sma7Val
-        , bbm = bbmVal, bbu = bbuVal, bbl = bblVal
-        , bb6u = bb6uVal, bb4u = bb4uVal, bb4l = bb4lVal, bb6l = bb6lVal
-        , cmah7 = 0.0, cmal7 = 0.0, hlcmah7 = 0.0
-        , k = kVal, d = dVal, j = jVal, m = mVal
-        , signal = ""
-        }
+      result = MkChartResult sma7Val bbmVal bbuVal bblVal
+        bb6uVal bb4uVal bb4lVal bb6lVal
+        kVal dVal jVal mVal
 
       newSt = MkIState
-        newSma7Sum newSma7Count newSma7Window
-        newBbSum newBbSumSq newBbCount newBbWindow
-        sma7Val bbmVal bbuVal bblVal
+        newSma7Sum newSma7N newSma7Window
+        newBbSum newBbSumSq newBbN newBbWindow
+        sma7Val bbmVal
         kVal dVal jVal mVal
-        c lo
+        lo
         newBarsKOnD newBarsDOnK
         newLowWindow newHighWindow
-        (if isYangLeaf || isYinLeaf then barIdx else st.prevLeafEnd)
-        isYangLeaf
-      in (newSt, chartBar)
+      in (newSt, result)
 
 -- =========================================================================
--- computeChartBarsInc: single-pass fold, O(N) total
+-- computeIndicators: single-pass fold, returns SMA7 series + all results
 -- =========================================================================
 
 public export
 covering
-computeChartBarsInc : {i : Interval} -> List Segment -> List (Bar i) -> List (ChartBar i)
-computeChartBarsInc leaves bars =
-  let (_, chartBars) = go initState 0 bars
-  in chartBars
+computeIndicators : {i : Interval} -> List (Bar i) -> (List Double, List ChartResult)
+computeIndicators bars = go initState [] [] bars
   where
-    go : IState -> Integer -> List (Bar i) -> (IState, List (ChartBar i))
-    go st _ [] = (st, [])
-    go st idx (b :: bs) =
-      let (newSt, cb) = stepBar st leaves b idx
-          (_, rest) = go newSt (idx + 1) bs
-      in (newSt, cb :: rest)
+    go : IState -> List Double -> List ChartResult -> List (Bar i) -> (List Double, List ChartResult)
+    go _ smas results [] = (reverse smas, reverse results)
+    go st smas results (b :: bs) =
+      let (newSt, cr) = stepBar st b
+      in go newSt (cr.sma7 :: smas) (cr :: results) bs
+
+-- =========================================================================
+-- Full pipeline: bars → indicators → leaves → branches → regime → signals
+-- =========================================================================
+
+segFractal : Segment -> Fractal
+segFractal (YangLeaf f) = f
+segFractal (YinLeaf f) = f
+segFractal (YangBranch f _) = f
+segFractal (YinBranch f _) = f
+
+isYangLeafSeg : Segment -> Bool
+isYangLeafSeg (YangLeaf _) = True
+isYangLeafSeg _ = False
+
+isYinLeafSeg : Segment -> Bool
+isYinLeafSeg (YinLeaf _) = True
+isYinLeafSeg _ = False
+
+isBullMarket : List Segment -> Bool
+isBullMarket [] = True
+isBullMarket leaves =
+  let yangTotal = foldl (\acc, seg => acc + segBarsCount seg) 0
+                      (filter isYangLeafSeg leaves)
+      yinTotal = foldl (\acc, seg => acc + segBarsCount seg) 0
+                     (filter isYinLeafSeg leaves)
+  in yangTotal >= yinTotal
+
+indexedMap : (Nat -> a -> b) -> List a -> List b
+indexedMap f xs = go 0 xs
+  where
+    go : Nat -> List a -> List b
+    go _ [] = []
+    go i (x :: rest) = f i x :: go (i + 1) rest
+
+public export
+record FractalResult where
+  constructor MkFractalResult
+  leaves     : List Segment
+  branches   : List Segment
+  bullMarket : Bool
+  sma7Series : List Double
+
+public export
+covering
+computeFractal : {i : Interval} -> List (Bar i) -> (List ChartResult, FractalResult)
+computeFractal bars =
+  let (sma7Series, results) = computeIndicators bars
+      leafBars = indexedMap (\idx, val => MkLeafBar (cast idx) val) sma7Series
+      leaves = detectLeaf leafBars
+      bull = isBullMarket leaves
+      config = MkBranchConfig i "SMA7"
+      branches = detectBranch config leafBars leaves
+      fractal = MkFractalResult leaves branches bull sma7Series
+  in (results, fractal)

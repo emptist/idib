@@ -15,7 +15,8 @@ cat >> idib.mjs << 'EXPORTS'
 // --- Exports for FFI consumption ---
 export {
   Idib_Fractal_LeafDetect_detectLeaf,
-  Idib_Indicators_Incremental_computeChartBarsInc,
+  Idib_Indicators_Incremental_computeFractal,
+  Idib_Indicators_Incremental_computeIndicators,
   Idib_Indicators_Incremental_stepBar
 }
 EXPORTS

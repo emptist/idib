@@ -1,9 +1,9 @@
-// idib Gateway: dynamic symbol + interval via SSE control channel
+// idib Gateway: bars → indicators → fractal → signals → dashboard
 // Usage: node gateway/index.mjs
 
 import { IBGateway } from './ib.mjs'
 import { SSEServer } from './sse.mjs'
-import { detectLeaf, computeChartBarsInc } from '../ffi/idib-ffi.mjs'
+import { computeFractal } from '../ffi/idib-ffi.mjs'
 
 const IB_HOST = process.env.IB_HOST || '127.0.0.1'
 const IB_PORT = parseInt(process.env.IB_PORT || '7497')
@@ -12,6 +12,11 @@ const SSE_PORT = parseInt(process.env.SSE_PORT || '3000')
 const DURATIONS = {
   '1m': '1 D', '5m': '1 D', '15m': '2 D', '30m': '5 D',
   '1h': '1 W', '4h': '1 M', '1d': '1 M', '1w': '1 Y',
+}
+
+const INTERVAL_KEYS = {
+  '1 month': '1d', '1 day': '1d', '1 week': '1w',
+  '1h': '1h', '4h': '4h', '1m': '1m', '5m': '5m',
 }
 
 async function main() {
@@ -36,34 +41,39 @@ async function main() {
       return
     }
 
-    for (const interval of intervals) {
-      const duration = DURATIONS[interval] || '1 W'
-      console.log(`Fetch: ${symbol} [${interval}] ${duration}`)
+    for (const intervalLabel of intervals) {
+      const duration = DURATIONS[intervalLabel] || '1 W'
+      const intervalKey = INTERVAL_KEYS[intervalLabel] || '1d'
+      console.log(`Fetch: ${symbol} [${intervalLabel}] ${duration}`)
 
       try {
         const data = await ib.reqHistoricalData({
-          symbol, duration, barSize: interval, whatToShow: 'TRADES',
+          symbol, duration, barSize: intervalLabel, whatToShow: 'TRADES',
         })
 
         if (data.ok && data.bars.length > 0) {
-          // 1. Detect fractal leaves (from close prices)
-          const leafBars = data.bars.map((b, i) => ({ index: i, value: b.close }))
-          const leaves = detectLeaf(leafBars)
+          // Full pipeline: indicators + fractal in one O(N) pass
+          const { chartResults, fractal } = computeFractal(intervalKey, data.bars)
 
-          // 2. Compute all indicators incrementally (O(N), no recomputation)
-          const chartBars = computeChartBarsInc(leaves, data.bars)
+          // Merge indicators into bar data for dashboard
+          const chartBars = data.bars.map((bar, i) => ({
+            bar,
+            ...(chartResults[i] || {}),
+          }))
 
           sse.broadcast(symbol, {
-            interval,
+            interval: intervalLabel,
             chartBars,
-            leaves,
+            leaves: fractal.leaves,
+            branches: fractal.branches,
+            bullMarket: fractal.bullMarket,
             timestamp: new Date().toISOString(),
           })
-          console.log(`  ${symbol} [${interval}]: ${data.bars.length} bars, ${leaves.length} leaves, ${chartBars.length} chartBars`)
+          console.log(`  ${symbol} [${intervalLabel}]: ${data.bars.length} bars, ${fractal.leaves.length} leaves, bull=${fractal.bullMarket}`)
         }
       } catch (err) {
-        console.error(`  ${symbol} [${interval}]: ${err.message}`)
-        sse.broadcast(symbol, { interval, error: err.message })
+        console.error(`  ${symbol} [${intervalLabel}]: ${err.message}`)
+        sse.broadcast(symbol, { interval: intervalLabel, error: err.message })
       }
     }
   }

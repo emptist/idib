@@ -1,8 +1,7 @@
 // idib FFI wrapper: clean API over compiled Idris 2 functions
-// Usage:
-//   import { detectLeaf, detectBranch } from './idib-ffi.mjs'
-//   const leaves = detectLeaf([{index: 0, value: 10.0}, ...])
-//   const branches = detectBranch({interval: 'Day1'}, bars, leaves)
+//
+// Pipeline: bars → indicators → fractal leaves → branches → regime → signals
+// O(N) total, O(1) per bar — no recomputation
 
 import {
   natToNumber, numberToNat,
@@ -13,77 +12,63 @@ import {
   jsonToBar, barToJson, chartBarToJson
 } from '../support/js/idib_support.js'
 
-// --- Import compiled Idris module ---
-// The compiled idib.mjs defines functions in global scope.
-// We need to import it as a side-effect module.
-
-// Import the compiled module by executing it
 const idibModule = await import('../idib.mjs')
 
-// --- Internal: call compiled Idris functions ---
+// --- Helpers ---
 
-function callDetectLeaf(barsJson) {
-  const idrisBars = arrayToList(barsJson.map(jsonToLeafBar));
-  const result = idibModule.Idib_Fractal_LeafDetect_detectLeaf(idrisBars);
-  return idrisListToArray(result).map(segmentToJson);
-}
-
-function callDetectBranch(configJson, barsJson, leavesJson) {
-  const idrisConfig = jsonToBranchConfig(configJson);
-  const idrisBars = arrayToList(barsJson.map(jsonToLeafBar));
-  const idrisLeaves = arrayToList(leavesJson.map(jsonToSegment));
-  const result = idibModule.Idib_Fractal_Branch_detectBranch(
-    idrisConfig, idrisBars, idrisLeaves
-  );
-  return idrisListToArray(result).map(segmentToJson);
+const intervalTag = {
+  '1m': 0, '5m': 1, '15m': 2, '30m': 3,
+  '1h': 5, '4h': 6, '1d': 7, '1w': 8, '1mo': 9, '3mo': 10
 }
 
 // --- Public API ---
 
 /**
- * Detect leaf-level segments from price bars.
- * @param {Array<{index: number, value: number}>} bars - Price bars
- * @returns {Array<{kind: 'YangLeaf'|'YinLeaf', startIdx: number, endIdx: number}>}
+ * Compute all indicators + fractal pipeline in one pass.
+ * @param {string} interval - '1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'
+ * @param {Array<{date:string, opn:number, high:number, low:number, close:number, volume:number}>} bars
+ * @returns {{chartResults: Array, fractal: {leaves, branches, bullMarket, sma7Series}}}
  */
-export function detectLeaf(bars) {
-  return callDetectLeaf(bars);
+export function computeFractal(interval, bars) {
+  const tag = intervalTag[interval] || 7
+  const idrisBars = arrayToList(bars.map(jsonToBar))
+  const idrisPair = idibModule.Idib_Indicators_Incremental_computeFractal(tag, idrisBars)
+  const idrisResults = idrisPair.a1
+  const idrisFractal = idrisPair.a2
+
+  const chartResults = idrisListToArray(idrisResults).map(cr => ({
+    sma7: cr.a1,
+    bbm: cr.a2,
+    bbu: cr.a3,
+    bbl: cr.a4,
+    bb6u: cr.a5,
+    bb4u: cr.a6,
+    bb4l: cr.a7,
+    bb6l: cr.a8,
+    k: cr.a9,
+    d: cr.a10,
+    j: cr.a11,
+    m: cr.a12,
+  }))
+
+  // FractalResult record: {a1: leaves, a2: branches, a3: bullMarket, a4: sma7Series}
+  const fractal = {
+    leaves: idrisListToArray(idrisFractal.a1).map(segmentToJson),
+    branches: idrisListToArray(idrisFractal.a2).map(segmentToJson),
+    bullMarket: idrisFractal.a3,
+    sma7Series: idrisListToArray(idrisFractal.a4),
+  }
+
+  return { chartResults, fractal }
 }
 
 /**
- * Detect branch-level segments from leaf segments.
- * @param {{interval: string, valueSeries?: string}} config - Branch config
- * @param {Array<{index: number, value: number}>} bars - Source price bars
- * @param {Array} leaves - Leaf segments from detectLeaf
- * @returns {Array<{kind: 'YangBranch'|'YinBranch', startIdx: number, endIdx: number, recognIdx: number}>}
+ * Detect leaf segments from SMA7 values.
+ * @param {Array<number>} sma7Values
+ * @returns {Array<{kind, startIdx, endIdx}>}
  */
-export function detectBranch(config, bars, leaves) {
-  return callDetectBranch(config, bars, leaves);
-}
-
-/**
- * Full fractal pipeline: bars → leaves → branches.
- * @param {Array<{index: number, value: number}>} bars - Price bars
- * @param {{interval: string}} config - Branch config
- * @returns {{leaves: Array, branches: Array}}
- */
-export function detectFractal(bars, config = { interval: 'Day1' }) {
-  const leaves = detectLeaf(bars);
-  const branches = detectBranch(config, bars, leaves);
-  return { leaves, branches };
-}
-
-/**
- * Compute all indicators incrementally using fractal leaves.
- * O(N) total, O(1) per bar — no recomputation.
- * @param {Array} leaves - Leaf segments from detectLeaf
- * @param {Array<{date:string, opn:number, high:number, low:number, close:number, volume:number}>} bars - OHLCV bars
- * @returns {Array<{bar, sma7, bbm, bbu, bbl, bb6u, bb4u, bb4l, bb6l, k, d, j, m, signal}>}
- */
-export function computeChartBarsInc(leaves, bars) {
-  const idrisLeaves = arrayToList(leaves.map(jsonToSegment));
-  const idrisBars = arrayToList(bars.map(jsonToBar));
-  const result = idibModule.Idib_Indicators_Incremental_computeChartBarsInc(
-    6, idrisLeaves, idrisBars  // 6 = Day1 interval tag
-  );
-  return idrisListToArray(result).map(chartBarToJson);
+export function detectLeaf(sma7Values) {
+  const leafBars = arrayToList(sma7Values.map((v, i) => ({ a1: numberToNat(i), a2: v })))
+  const result = idibModule.Idib_Fractal_LeafDetect_detectLeaf(leafBars)
+  return idrisListToArray(result).map(segmentToJson)
 }
