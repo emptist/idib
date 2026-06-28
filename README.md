@@ -30,12 +30,12 @@ idib/
 │   │   │   ├── BollingerBands.idr   # BB + Fibonacci lines
 │   │   │   ├── KDJ.idr              # RSV → SMA(K/D/M), rolling max/min
 │   │   │   └── ChartBar.idr         # Unified computeChartBars
-│   │   ├── Fish/
-│   │   │   ├── Simple.idr           # SimpleFish (extremum-based, from glib)
-│   │   │   ├── Types.idr            # New Fish types, interval-gated N
-│   │   │   ├── SimpleDetect.idr     # SimpleFish detection
-│   │   │   ├── Detect.idr           # New Fish with N-bar confirmation
-│   │   │   └── Analytics.idr        # Fish metrics for AI pattern discovery
+│   │   ├── Leaf/                      # Leaf/Branch segment detection
+│   │   │   ├── Types.idr            # Branch types, interval-gated N
+│   │   │   ├── Leaf.idr             # Leaf (extremum-based, from glib)
+│   │   │   ├── LeafDetect.idr       # Leaf detection
+│   │   │   ├── Branch.idr           # Branch with N-bar confirmation
+│   │   │   └── Analytics.idr        # Branch metrics for AI pattern discovery
 │   │   ├── Strategy/
 │   │   │   ├── Position.idr         # Indexed Position state machine
 │   │   │   ├── Evaluate.idr         # evaluateBar (kdj_right/left, bbuy, buy, sell)
@@ -53,9 +53,9 @@ idib/
 - Expanding-window fallback: bar 1 returns value, not `Nothing`
 - Output: `Vect n Double` — same length as input, no alignment issues
 
-### Fish Segments (Research)
-- **SimpleFish**: Extremum-based alternating sequence (ported from glib's `Fish.idr`)
-- **New Fish**: Two-level detection with N-bar confirmation + back-counting
+### Leaf/Branch Segments (Research)
+- **Leaf**: Extremum-based alternating sequence (ported from glib's `Fish.idr`)
+- **Branch**: Two-level detection with N-bar confirmation + back-counting
   - YangFish: TRUE start = lowest in subsequent SimpleYin (found at new HIGH)
   - YinFish: TRUE start = highest in subsequent SimpleYang (found at new LOW)
   - N = 2 × barsPerMonth(interval): 1mo=2, 1wk=8, 1d=40, 1h=260, 4h=64

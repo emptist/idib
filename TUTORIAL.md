@@ -310,27 +310,27 @@ the compiler checks every `RiskReason` is handled.
 ## 8. GADTs — invariants encoded in the type
 
 Idris 2 lets a `data` declaration refer to its own type indices. This is how
-`../glib/Fish.idr` makes alternation unforgeable:
+`../glib/Fish.idr` makes alternation unforgeable (we call this pattern Leaf/Branch):
 
 ```idris
-data FishKind = Yang | Yin
+data BranchKind = Yang | Yin
 
-opposite : FishKind -> FishKind
+opposite : BranchKind -> BranchKind
 opposite Yang = Yin
 opposite Yin  = Yang
 
-data FishSeq : FishKind -> Type where
-  FSSingle : (f : Fish)
+data BranchSeq : BranchKind -> Type where
+  FSSingle : (f : Leaf)
           -> {auto prfKind : kind f = k}
-          -> FishSeq k
-  FSCons   : (f : Fish)
+          -> BranchSeq k
+  FSCons   : (f : Leaf)
           -> {auto prfKind : kind f = k}
-          -> FishSeq (opposite k)
-          -> FishSeq k
+          -> BranchSeq (opposite k)
+          -> BranchSeq k
 ```
 
-`FishSeq Yang` cannot contain two consecutive `Yang` fish: the `FSCons`
-constructor's tail has type `FishSeq (opposite k)`. This is a guarantee the
+`BranchSeq Yang` cannot contain two consecutive `Yang` leaves: the `FSCons`
+constructor's tail has type `BranchSeq (opposite k)`. This is a guarantee the
 *type* gives you for free — no runtime check, no unit test, no comment.
 
 ### Another example: a sorted list
@@ -635,13 +635,13 @@ Once `WindowedSMA` exists, the three indicator modules (`Bollinger`,
 `SMA7`, `KDJ`) become thin wrappers, and the "expanding-window fallback
 missing" bugs that `glib` has in three separate places are fixed in one.
 
-### 13.5 `Fish` / `Swim` / `Buoy` as dependent types
+### 13.5 `Leaf` / `Branch` as dependent types
 
 The same REVIEW_REFERENCE.md notes that `glib`'s `sma7` segment tracking
-(hrows7, cmah7, …) *is* Fish on SMA7, but never named as such. `idib` makes
+(hrows7, cmah7, …) *is* Leaf on SMA7, but never named as such. `idib` makes
 the abstraction first-class — `Fish.idr` already exists in `../glib` as a
-prototype. Its alternation invariant (`FishSeq Yang` cannot hold two
-consecutive Yang fish) is enforced by the GADT's constructor signatures;
+prototype (we call it Leaf/Branch). Its alternation invariant (`BranchSeq Yang` cannot hold two
+consecutive Yang leaves) is enforced by the GADT's constructor signatures;
 no runtime check, no unit test, no comment.
 
 ---
