@@ -1,32 +1,14 @@
 package idib
 
-  -- Source directory
   sourcedir = "src"
 
-  -- Build to Node.js
-  -- codegen set via directive
-
-  -- Packages required
-  -- (none for core library)
-
-  -- Modules
   modules =
     Idib.Types,
     Idib.Vector,
-    Idib.Indicators.SMA,
-    Idib.Indicators.BollingerBands,
-    Idib.Indicators.KDJ,
-    Idib.Indicators.ChartBar,
-    Idib.Indicators.Incremental,
     Idib.Strategy.Position,
-    Idib.Strategy.Helpers,
-    Idib.Strategy.Evaluate,
-    Idib.Strategy.SignalSeries,
-    Idib.MultiTF,
-    Idib.Strategy.MultiTF,
-    Idib.Server.MultiChart,
     Idib.Fractal.Leaf,
     Idib.Fractal.Types,
     Idib.Fractal.LeafDetect,
     Idib.Fractal.Branch,
-    Idib.Fractal.Analytics
+    Idib.Fractal.Analytics,
+    Idib.Indicators.Incremental

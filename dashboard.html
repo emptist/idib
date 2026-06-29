@@ -38,7 +38,7 @@
         #status.err { background: #e74c3c; }
         #status.off { background: #f39c12; color: #000; }
         .grid {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+            display: grid; gap: 8px;
             padding: 8px 12px; height: calc(100vh - 40px);
         }
         .col { display: flex; flex-direction: column; }
@@ -68,30 +68,9 @@
         <h1>idib</h1>
         <input id="sym" value="SPY" maxlength="6" spellcheck="false">
         <button id="go">Fetch</button>
-        <span id="regime-left" class="regime bull" style="display:none">—</span>
-        <span id="regime-right" class="regime bull" style="display:none">—</span>
         <span id="status" class="off">...</span>
     </header>
-    <div class="grid">
-        <div class="col">
-            <div class="col-hdr">
-                <h2 id="h-left">1M</h2>
-                <span class="info" id="i-left">—</span>
-            </div>
-            <div id="c-left" class="chart"></div>
-            <div id="k-left" class="kdj-chart"></div>
-            <div class="segs" id="s-left"></div>
-        </div>
-        <div class="col">
-            <div class="col-hdr">
-                <h2 id="h-right">1D</h2>
-                <span class="info" id="i-right">—</span>
-            </div>
-            <div id="c-right" class="chart"></div>
-            <div id="k-right" class="kdj-chart"></div>
-            <div class="segs" id="s-right"></div>
-        </div>
-    </div>
+    <div class="grid" id="grid"></div>
     <div id="log"></div>
 
     <script>
@@ -100,9 +79,28 @@
         el.textContent = new Date().toLocaleTimeString() + ' ' + m + '\n' + el.textContent
     }
 
-    function makeChart(elId, kdjElId) {
-        const el = document.getElementById(elId)
-        const ch = LightweightCharts.createChart(el, {
+    // Active charts: intervalLabel → { ch, cs, vs, sma7Line, bbmLine, bbuLine, bblLine, kCh, kLine, dLine, jLine, regimeEl }
+    const charts = {}
+    const panelOrder = []  // track order for grid layout
+
+    function createPanel(intervalLabel) {
+        const grid = document.getElementById('grid')
+        const col = document.createElement('div')
+        col.className = 'col'
+        col.id = 'col-' + intervalLabel.replace(/\s/g, '')
+        col.innerHTML = `
+            <div class="col-hdr">
+                <h2>${intervalLabel}</h2>
+                <span class="regime" id="regime-${intervalLabel}"></span>
+                <span class="info" id="info-${intervalLabel}">—</span>
+            </div>
+            <div id="chart-${intervalLabel}" class="chart"></div>
+            <div id="kdj-${intervalLabel}" class="kdj-chart"></div>
+            <div class="segs" id="segs-${intervalLabel}"></div>
+        `
+        grid.appendChild(col)
+
+        const ch = LightweightCharts.createChart(document.getElementById('chart-' + intervalLabel), {
             layout: { background: { color: '#111128' }, textColor: '#aaa' },
             grid: { vertLines: { color: '#1a1a3e' }, horzLines: { color: '#1a1a3e' } },
             crosshair: { mode: 0 },
@@ -123,7 +121,7 @@
         const bbuLine = ch.addLineSeries({ color: '#9b59b644', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false })
         const bblLine = ch.addLineSeries({ color: '#9b59b644', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false })
 
-        const kEl = document.getElementById(kdjElId)
+        const kEl = document.getElementById('kdj-' + intervalLabel)
         const kCh = LightweightCharts.createChart(kEl, {
             layout: { background: { color: '#111128' }, textColor: '#aaa' },
             grid: { vertLines: { color: '#1a1a3e' }, horzLines: { color: '#1a1a3e' } },
@@ -135,7 +133,11 @@
         const dLine = kCh.addLineSeries({ color: '#e67e22', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
         const jLine = kCh.addLineSeries({ color: '#e74c3c', lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
 
-        return { ch, cs, vs, sma7Line, bbmLine, bbuLine, bblLine, kCh, kLine, dLine, jLine }
+        charts[intervalLabel] = { ch, cs, vs, sma7Line, bbmLine, bbuLine, bblLine, kCh, kLine, dLine, jLine }
+        panelOrder.push(intervalLabel)
+
+        // Set grid layout
+        grid.style.gridTemplateColumns = panelOrder.map(() => '1fr').join(' ')
     }
 
     function pt(s) {
@@ -144,64 +146,51 @@
         return Math.floor(new Date(m[1], m[2]-1, m[3], m[4], m[5], m[6]).getTime() / 1000)
     }
 
-    const left = makeChart('c-left', 'k-left')
-    const right = makeChart('c-right', 'k-right')
-    const panelMap = {}
+    function updateInterval(intervalLabel, data) {
+        if (!charts[intervalLabel]) createPanel(intervalLabel)
+        const { ch, cs, vs, sma7Line, bbmLine, bbuLine, bblLine, kLine, dLine, jLine } = charts[intervalLabel]
 
-    function update(data) {
-        const iv = data.interval
-        if (!iv) return
-
-        if (!panelMap[iv]) {
-            const used = new Set(Object.values(panelMap))
-            panelMap[iv] = used.has('left') ? 'right' : 'left'
-        }
-        const side = panelMap[iv]
-        const ch = side === 'left' ? left : right
-
-        document.getElementById('h-' + side).textContent = iv
         const bars = data.chartBars || []
-        document.getElementById('i-' + side).textContent = bars.length ? bars.length + ' bars' : '—'
+        document.getElementById('info-' + intervalLabel).textContent = bars.length ? bars.length + ' bars' : '—'
 
-        // Market regime badge
-        const regimeEl = document.getElementById('regime-' + side)
+        // Regime
+        const regimeEl = document.getElementById('regime-' + intervalLabel)
         if (data.bullMarket !== undefined) {
-            regimeEl.style.display = 'inline'
             regimeEl.textContent = data.bullMarket ? 'BULL' : 'BEAR'
             regimeEl.className = 'regime ' + (data.bullMarket ? 'bull' : 'bear')
         }
 
-        if (bars.length) {
-            const candles = bars.map(b => ({
-                time: pt(b.bar.date), open: b.bar.opn, high: b.bar.high,
-                low: b.bar.low, close: b.bar.close,
-            })).filter(c => c.time > 0).sort((a, b) => a.time - b.time)
+        if (!bars.length) return
 
-            ch.cs.setData(candles)
-            ch.vs.setData(bars.map(b => ({
-                time: pt(b.bar.date), value: b.bar.volume || 0,
-                color: b.bar.close >= b.bar.opn ? '#4ae68a44' : '#e64a6a44',
-            })).filter(c => c.time > 0))
+        const candles = bars.map(b => ({
+            time: pt(b.bar.date), open: b.bar.opn, high: b.bar.high,
+            low: b.bar.low, close: b.bar.close,
+        })).filter(c => c.time > 0).sort((a, b) => a.time - b.time)
 
-            const toLine = (fn) => bars.map(b => ({
-                time: pt(b.bar.date), value: fn(b),
-            })).filter(c => c.time > 0 && c.value !== 0)
+        cs.setData(candles)
+        vs.setData(bars.map(b => ({
+            time: pt(b.bar.date), value: b.bar.volume || 0,
+            color: b.bar.close >= b.bar.opn ? '#4ae68a44' : '#e64a6a44',
+        })).filter(c => c.time > 0))
 
-            ch.sma7Line.setData(toLine(b => b.sma7))
-            ch.bbmLine.setData(toLine(b => b.bbm))
-            ch.bbuLine.setData(toLine(b => b.bbu))
-            ch.bblLine.setData(toLine(b => b.bbl))
-            ch.kLine.setData(toLine(b => b.k))
-            ch.dLine.setData(toLine(b => b.d))
-            ch.jLine.setData(toLine(b => b.j))
+        const toLine = (fn) => bars.map(b => ({
+            time: pt(b.bar.date), value: fn(b),
+        })).filter(c => c.time > 0 && c.value !== 0)
 
-            ch.ch.timeScale().fitContent()
-            ch.kCh.timeScale().fitContent()
-        }
+        sma7Line.setData(toLine(b => b.sma7))
+        bbmLine.setData(toLine(b => b.bbm))
+        bbuLine.setData(toLine(b => b.bbu))
+        bblLine.setData(toLine(b => b.bbl))
+        kLine.setData(toLine(b => b.k))
+        dLine.setData(toLine(b => b.d))
+        jLine.setData(toLine(b => b.j))
 
-        // Fractal segments + branches
+        ch.timeScale().fitContent()
+        charts[intervalLabel].kCh.timeScale().fitContent()
+
+        // Fractal segments
         const all = [...(data.leaves || []), ...(data.branches || [])]
-        document.getElementById('s-' + side).innerHTML = all.map(s => {
+        document.getElementById('segs-' + intervalLabel).innerHTML = all.map(s => {
             const isLeaf = s.kind.includes('Leaf')
             const isYang = s.kind.startsWith('Yang')
             const cls = isLeaf ? (isYang ? 'y' : 'n') : 'b'
@@ -210,6 +199,7 @@
         }).join('')
     }
 
+    // Fetch
     const goBtn = document.getElementById('go')
     goBtn.onclick = () => {
         const symbol = document.getElementById('sym').value.toUpperCase().trim()
@@ -226,11 +216,21 @@
     }
     document.getElementById('sym').onkeydown = (e) => { if (e.key === 'Enter') goBtn.click() }
 
+    // SSE: receives { symbol, intervals: { '1 month': {...}, '1 day': {...} } }
     const st = document.getElementById('status')
     const es = new EventSource('/stream')
     es.onopen = () => { st.textContent = 'connected'; st.className = 'ok' }
     es.onerror = () => { st.textContent = 'reconnecting...'; st.className = 'err' }
-    es.onmessage = (e) => { try { update(JSON.parse(e.data)) } catch (er) { log(er.message) } }
+    es.onmessage = (e) => {
+        try {
+            const msg = JSON.parse(e.data)
+            if (msg.intervals) {
+                for (const [label, data] of Object.entries(msg.intervals)) {
+                    if (data && !data.error) updateInterval(label, data)
+                }
+            }
+        } catch (er) { log(er.message) }
+    }
     </script>
 </body>
 </html>

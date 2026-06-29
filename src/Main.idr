@@ -24,5 +24,4 @@ main = do
   let (results, fractal) = testPipeline bars
   putStrLn $ "Results: " ++ show (length results)
   putStrLn $ "Leaves: " ++ show (length fractal.leaves)
-  putStrLn $ "Bull: " ++ show fractal.bullMarket
   putStrLn "idib library loaded"
