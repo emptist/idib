@@ -51,12 +51,18 @@ export function computeFractal(interval, bars) {
     m: cr.a12,
   }))
 
-  // FractalResult record: {a1: leaves, a2: branches, a3: bullMarket, a4: sma7Series}
+  // FractalResult record: {a1: leaves, a2: branches, a3: bullMarket, a4: sma7Series, a5: indicators}
+  const idrisFI = idrisFractal.a5
   const fractal = {
     leaves: idrisListToArray(idrisFractal.a1).map(segmentToJson),
     branches: idrisListToArray(idrisFractal.a2).map(segmentToJson),
     bullMarket: idrisFractal.a3,
     sma7Series: idrisListToArray(idrisFractal.a4),
+    indicators: {
+      hprd7: idrisListToArray(idrisFI.a1),
+      lprd7: idrisListToArray(idrisFI.a2),
+      hlhrows7: idrisListToArray(idrisFI.a3),
+    },
   }
 
   return { chartResults, fractal }

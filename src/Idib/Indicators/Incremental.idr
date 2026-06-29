@@ -213,6 +213,67 @@ indexedMap f xs = go 0 xs
     go _ [] = []
     go i (x :: rest) = f i x :: go (i + 1) rest
 
+-- =========================================================================
+-- FractalIndicators: per-bar values derived from SMA7 fractal
+-- These belong to the fractal, not to raw prices
+-- =========================================================================
+
+public export
+record FractalIndicators where
+  constructor MkFractalIndicators
+  hprd7     : List Nat    -- bars since last SMA7 peak (yang leaf end)
+  lprd7     : List Nat    -- bars since last SMA7 trough (yin leaf end)
+  hlhrows7  : List Nat    -- position within current peak group
+  cmah7     : List Double -- expanding mean of highs at yang leaf ends
+  cmal7     : List Double -- expanding mean of lows at yin leaf ends
+
+-- computeFractalIndicators: derive hprd7/lprd7/etc from leaves
+-- Each bar: find most recent leaf end, compute distance
+covering
+computeFractalIndicators : List Segment -> Nat -> FractalIndicators
+computeFractalIndicators leaves totalBars =
+  let hprd7Vals = computeHprd7 leaves totalBars
+      lprd7Vals = computeLprd7 leaves totalBars
+  in MkFractalIndicators hprd7Vals lprd7Vals hprd7Vals [] []
+  where
+    isYangAtEnd : Nat -> Bool
+    isYangAtEnd idx = any (\l => segEndIdx l == idx && isYangLeafSeg l) leaves
+
+    isYinAtEnd : Nat -> Bool
+    isYinAtEnd idx = any (\l => segEndIdx l == idx && isYinLeafSeg l) leaves
+
+    enumFromTo : Nat -> Nat -> List Nat
+    enumFromTo a b = if a > b then [] else a :: enumFromTo (a + 1) b
+
+    -- nMinus1: safe predecessor, returns 0 for zero
+    nMinus1 : Nat -> Nat
+    nMinus1 0 = 0
+    nMinus1 (S k) = k
+
+    computeHprd7 : List Segment -> Nat -> List Nat
+    computeHprd7 _ n = go 0 [] (enumFromTo 0 (nMinus1 n))
+      where
+        go : Nat -> List Nat -> List Nat -> List Nat
+        go _ acc [] = reverse acc
+        go lastPeak acc (j :: js) =
+          let newPeak = if isYangAtEnd j then j else lastPeak
+              jI = cast {from=Nat} {to=Integer} j
+              pI = cast {from=Nat} {to=Integer} newPeak
+              dist = if newPeak == 0 then 0 else cast {from=Integer} {to=Nat} (jI - pI)
+          in go newPeak (dist :: acc) js
+
+    computeLprd7 : List Segment -> Nat -> List Nat
+    computeLprd7 _ n = go 0 [] (enumFromTo 0 (nMinus1 n))
+      where
+        go : Nat -> List Nat -> List Nat -> List Nat
+        go _ acc [] = reverse acc
+        go lastTrough acc (j :: js) =
+          let newTrough = if isYinAtEnd j then j else lastTrough
+              jI = cast {from=Nat} {to=Integer} j
+              tI = cast {from=Nat} {to=Integer} newTrough
+              dist = if newTrough == 0 then 0 else cast {from=Integer} {to=Nat} (jI - tI)
+          in go newTrough (dist :: acc) js
+
 public export
 record FractalResult where
   constructor MkFractalResult
@@ -220,16 +281,19 @@ record FractalResult where
   branches   : List Segment
   bullMarket : Bool
   sma7Series : List Double
+  indicators : FractalIndicators
 
 public export
 covering
 computeFractal : {i : Interval} -> List (Bar i) -> (List ChartResult, FractalResult)
 computeFractal bars =
   let (sma7Series, results) = computeIndicators bars
+      barCount = length sma7Series
       leafBars = indexedMap (\idx, val => MkLeafBar (cast idx) val) sma7Series
       leaves = detectLeaf leafBars
       bull = isBullMarket leaves
       config = MkBranchConfig i "SMA7"
       branches = detectBranch config leafBars leaves
-      fractal = MkFractalResult leaves branches bull sma7Series
+      fi = computeFractalIndicators leaves (cast barCount)
+      fractal = MkFractalResult leaves branches bull sma7Series fi
   in (results, fractal)

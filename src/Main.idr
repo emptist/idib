@@ -14,6 +14,7 @@ covering
 testPipeline : List (Bar Day1) -> (List ChartResult, FractalResult)
 testPipeline = computeFractal {i=Day1}
 
+covering
 main : IO ()
 main = do
   let bars = [ MkBar "2024-01-01" 100.0 110.0 90.0 105.0 1000
